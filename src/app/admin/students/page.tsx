@@ -29,6 +29,7 @@ export default async function AdminStudentsPage() {
                   id: s.id,
                   displayName: s.displayName,
                   username: s.username,
+                  phone: s.phone,
                   competitionOptIn: s.competitionOptIn,
                 }}
               />

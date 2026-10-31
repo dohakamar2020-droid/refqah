@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { getSessionUser } from "@/lib/permissions";
+import { hasAdmin } from "@/lib/queries";
 import { LogoMark } from "@/components/floral";
 import { Nav } from "@/components/nav";
 import { LogoutButton } from "@/components/logout-button";
 
 export async function SiteHeader() {
-  const me = await getSessionUser();
+  const [me, configured] = await Promise.all([getSessionUser(), hasAdmin()]);
+  // Fresh installation → the entry point is the first-run setup screen.
+  const authHref = configured ? "/login" : "/setup";
 
   return (
     <header className="sticky top-0 z-40 border-b border-powder/60 bg-ivory/85 backdrop-blur-md">
@@ -38,15 +41,15 @@ export async function SiteHeader() {
               <LogoutButton />
             </>
           ) : (
-            <Link href="/login" className="btn-soft !px-5 !py-2 text-sm">
-              تسجيل الدخول
+            <Link href={authHref} className="btn-soft !px-5 !py-2 text-sm">
+              {configured ? "تسجيل الدخول" : "إعداد الموقع"}
             </Link>
           )}
         </div>
 
         {!me && (
-          <Link href="/login" className="btn-soft !px-4 !py-2 text-xs md:hidden">
-            دخول
+          <Link href={authHref} className="btn-soft !px-4 !py-2 text-xs md:hidden">
+            {configured ? "دخول" : "إعداد"}
           </Link>
         )}
       </div>

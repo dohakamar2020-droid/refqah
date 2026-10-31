@@ -80,6 +80,11 @@ export const student = pgTable("student", {
     .references(() => user.id, { onDelete: "cascade" }),
   displayName: text("display_name").notNull(),
   avatarUrl: text("avatar_url"),
+  /**
+   * رقم واتساب الطالبة بالصيغة الدولية (مثال: 201012345678).
+   * اختياري — يُستخدم فقط لفتح محادثة واتساب عند إرسال التقرير.
+   */
+  phone: text("phone"),
   /** موافقة الطالبة على الظهور في لوحة أفضل 3 */
   competitionOptIn: boolean("competition_opt_in").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -7,8 +7,10 @@ const TABS = [
   { href: "/admin", label: "نظرة عامة", exact: true },
   { href: "/admin/recitations", label: "جدول التسميع" },
   { href: "/admin/students", label: "الطالبات" },
+  { href: "/admin/reports", label: "التقارير" },
   { href: "/admin/hadiths", label: "الأحاديث" },
   { href: "/admin/honors", label: "التكريم والمنافسة" },
+  { href: "/admin/account", label: "حسابي" },
 ];
 
 export function AdminNav() {

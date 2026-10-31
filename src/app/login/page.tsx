@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/permissions";
+import { hasAdmin } from "@/lib/queries";
 import { LoginForm } from "@/components/login-form";
 import { FloralBranch, SmallFlower } from "@/components/floral";
 
@@ -8,6 +9,10 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage() {
   const me = await getSessionUser();
   if (me) redirect(me.role === "admin" ? "/admin" : "/me");
+
+  // Fresh installation: there is no teacher account yet, so send her to setup
+  // instead of showing a login form with no credentials to use.
+  if (!(await hasAdmin())) redirect("/setup");
 
   return (
     <div className="relative mx-auto max-w-md px-4 py-16 sm:px-6">

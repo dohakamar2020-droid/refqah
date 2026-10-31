@@ -6,6 +6,7 @@ import {
   getSabiqah,
   getMessages,
   getRandomMessage,
+  hasAdmin,
 } from "@/lib/queries";
 import { FloralBranch, OrnamentDivider, SmallFlower } from "@/components/floral";
 import { EncouragementCard } from "@/components/encouragement-card";
@@ -15,15 +16,25 @@ import { formatDate, PUBLISH_DAYS } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [me, progress, leaderboard, sabiqah, messages] = await Promise.all([
-    getSessionUser(),
-    getJourneyProgress(),
-    getLeaderboard(),
-    getSabiqah(),
-    getMessages(),
-  ]);
+  const [me, progress, leaderboard, sabiqah, messages, configured] =
+    await Promise.all([
+      getSessionUser(),
+      getJourneyProgress(),
+      getLeaderboard(),
+      getSabiqah(),
+      getMessages(),
+      hasAdmin(),
+    ]);
 
   const initialMessage = await getRandomMessage();
+
+  const journeyHref = me
+    ? me.role === "admin"
+      ? "/admin"
+      : "/me"
+    : configured
+      ? "/login"
+      : "/setup";
 
   return (
     <div className="relative overflow-hidden">
@@ -50,15 +61,9 @@ export default async function HomePage() {
           </p>
 
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            {me ? (
-              <Link href={me.role === "admin" ? "/admin" : "/me"} className="btn-primary">
-                تابعي رحلة الحفظ
-              </Link>
-            ) : (
-              <Link href="/login" className="btn-primary">
-                تابعي رحلة الحفظ
-              </Link>
-            )}
+            <Link href={journeyHref} className="btn-primary">
+              {configured ? "تابعي رحلة الحفظ" : "ابدئي إعداد الموقع"}
+            </Link>
             <Link href="/hadiths" className="btn-ghost">
               الأحاديث المنشورة
             </Link>

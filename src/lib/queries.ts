@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { eq, sql, desc, asc, and, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -62,6 +63,7 @@ export type StudentRow = {
   id: string;
   userId: string;
   displayName: string;
+  phone: string | null;
   competitionOptIn: boolean;
   email: string;
   username: string | null;
@@ -74,6 +76,7 @@ export async function getStudents(): Promise<StudentRow[]> {
       id: student.id,
       userId: student.userId,
       displayName: student.displayName,
+      phone: student.phone,
       competitionOptIn: student.competitionOptIn,
       email: user.email,
       username: user.username,
@@ -125,6 +128,7 @@ export async function getStudentProgress(
       id: student.id,
       userId: student.userId,
       displayName: student.displayName,
+      phone: student.phone,
       competitionOptIn: student.competitionOptIn,
       email: user.email,
       username: user.username,
@@ -300,6 +304,106 @@ export async function getHadithStats() {
     .from(recitation)
     .where(eq(recitation.recited, true))
     .groupBy(recitation.hadithId);
+}
+
+/**
+ * Has the first-run setup been completed?
+ * Cached per request — it is read by the header, the home page and /login.
+ */
+export const hasAdmin = cache(async function hasAdmin(): Promise<boolean> {
+  await ensureReady();
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(user)
+    .where(eq(user.role, "admin"));
+  return (row?.n ?? 0) > 0;
+});
+
+export type StudentReport = {
+  studentId: string;
+  displayName: string;
+  phone: string | null;
+  recitedCount: number;
+  remaining: number;
+  total: number;
+  percent: number;
+  publishedCount: number;
+  lastUpdate: string | null;
+  recentHadiths: number[];
+  honors: { title: string; description: string | null }[];
+  isSabiqah: boolean;
+  message: string | null;
+};
+
+/** Everything the shareable progress report needs. Teacher-only. */
+export async function getStudentReport(
+  studentId: string
+): Promise<StudentReport | null> {
+  await ensureReady();
+
+  const [row] = await db
+    .select({
+      id: student.id,
+      displayName: student.displayName,
+      phone: student.phone,
+    })
+    .from(student)
+    .where(eq(student.id, studentId))
+    .limit(1);
+  if (!row) return null;
+
+  const allHadiths = await getAllHadiths();
+  const total = allHadiths.length || TOTAL_HADITHS;
+  const publishedCount = allHadiths.filter((h) => h.published).length;
+
+  const recs = await db
+    .select({
+      hadithId: recitation.hadithId,
+      recitedAt: recitation.recitedAt,
+    })
+    .from(recitation)
+    .where(and(eq(recitation.studentId, studentId), eq(recitation.recited, true)));
+
+  const recitedSet = new Set(recs.map((r) => r.hadithId));
+  const byId = new Map(allHadiths.map((h) => [h.id, h.order]));
+
+  const recentHadiths = recs
+    .map((r) => ({ order: byId.get(r.hadithId) ?? 0, at: r.recitedAt }))
+    .filter((r) => r.order > 0)
+    .sort((a, b) => {
+      const ta = a.at?.getTime() ?? 0;
+      const tb = b.at?.getTime() ?? 0;
+      return tb - ta;
+    })
+    .slice(0, 6)
+    .map((r) => r.order)
+    .sort((a, b) => a - b);
+
+  const lastUpdate =
+    recs.length === 0
+      ? null
+      : recs.reduce<Date | null>(
+          (acc, r) => (r.recitedAt && (!acc || r.recitedAt > acc) ? r.recitedAt : acc),
+          null
+        );
+
+  const honors = (await getHonors()).filter((h) => h.studentId === studentId);
+
+  return {
+    studentId: row.id,
+    displayName: row.displayName,
+    phone: row.phone,
+    recitedCount: recitedSet.size,
+    remaining: total - recitedSet.size,
+    total,
+    percent: Math.round((recitedSet.size / total) * 100),
+    publishedCount,
+    lastUpdate: lastUpdate ? lastUpdate.toISOString() : null,
+    recentHadiths,
+    honors: honors.map((h) => ({ title: h.title, description: h.description })),
+    isSabiqah: honors.some((h) => h.title === "سَابِقَةُ الخَيْرَات"),
+    message: (await getRandomMessage())?.text ?? null,
+  };
 }
 
 export async function getStudentsByIds(ids: string[]) {

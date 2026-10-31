@@ -34,8 +34,9 @@ async function seedHadiths() {
       id: id("had"),
       order: h.order,
       title: h.title,
+      narrator: h.narrator,
       arabicText: h.arabicText,
-      source: h.source,
+      takhrij: h.takhrij,
       published: false,
     }))
   );

@@ -36,8 +36,9 @@ export default async function AdminHadithsPage() {
               id: h.id,
               order: h.order,
               title: h.title,
+              narrator: h.narrator,
               arabicText: h.arabicText,
-              source: h.source,
+              takhrij: h.takhrij,
               published: h.published,
             }}
           />

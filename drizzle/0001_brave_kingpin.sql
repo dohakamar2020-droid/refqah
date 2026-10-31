@@ -1,1 +1,0 @@
-ALTER TABLE "student" ADD COLUMN "phone" text;

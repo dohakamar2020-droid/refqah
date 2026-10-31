@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS "hadith" (
   "order" integer NOT NULL UNIQUE,
   "title" text NOT NULL,
   "arabic_text" text NOT NULL,
-  "source" text,
+  "narrator" text,
+  "takhrij" text,
   "published" boolean DEFAULT false NOT NULL,
   "published_at" timestamp,
   "created_at" timestamp DEFAULT now() NOT NULL,
@@ -119,6 +120,10 @@ CREATE TABLE IF NOT EXISTS "message" (
 
 -- Added after the initial schema: optional WhatsApp number on the student profile
 ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "phone" text;
+
+-- الراوي والتخريج: replaced the single "source" field
+ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "narrator" text;
+ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "takhrij" text;
 
 CREATE TABLE IF NOT EXISTS "registration_settings" (
   "id" text PRIMARY KEY DEFAULT 'main' NOT NULL,

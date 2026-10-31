@@ -7,8 +7,9 @@ export type HadithItem = {
   id: string;
   order: number;
   title: string;
+  narrator: string | null;
   arabicText: string;
-  source: string | null;
+  takhrij: string | null;
   published: boolean;
 };
 
@@ -68,11 +69,16 @@ export function HadithRow({ hadith }: { hadith: HadithItem }) {
               {published ? "منشور" : "لم يُنشر"}
             </span>
           </div>
-          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted">
+          {hadith.narrator && (
+            <p className="mt-2 text-sm leading-relaxed text-deep">{hadith.narrator}</p>
+          )}
+          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">
             {hadith.arabicText}
           </p>
-          {hadith.source && (
-            <p className="mt-1 text-xs text-muted">{hadith.source}</p>
+          {hadith.takhrij && (
+            <p className="mt-1 whitespace-pre-line text-xs text-muted">
+              {hadith.takhrij}
+            </p>
           )}
         </div>
 
@@ -132,6 +138,14 @@ export function HadithRow({ hadith }: { hadith: HadithItem }) {
             <input name="title" defaultValue={hadith.title} className="field" required />
           </div>
           <div>
+            <label className="label">الراوي</label>
+            <input
+              name="narrator"
+              defaultValue={hadith.narrator ?? ""}
+              className="field leading-loose"
+            />
+          </div>
+          <div>
             <label className="label">النص</label>
             <textarea
               name="arabicText"
@@ -142,11 +156,11 @@ export function HadithRow({ hadith }: { hadith: HadithItem }) {
             />
           </div>
           <div>
-            <label className="label">التخريج / المصدر</label>
+            <label className="label">التخريج</label>
             <input
-              name="source"
-              defaultValue={hadith.source ?? ""}
-              className="field"
+              name="takhrij"
+              defaultValue={hadith.takhrij ?? ""}
+              className="field leading-loose"
             />
           </div>
           <button type="submit" className="btn-primary" disabled={pending}>

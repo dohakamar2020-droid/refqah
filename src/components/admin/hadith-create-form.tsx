@@ -41,12 +41,16 @@ export function HadithCreateForm() {
         <input name="title" className="field" required />
       </div>
       <div>
+        <label className="label">الراوي</label>
+        <input name="narrator" className="field leading-loose" />
+      </div>
+      <div>
         <label className="label">النص</label>
         <textarea name="arabicText" rows={5} className="field leading-loose" required />
       </div>
       <div>
-        <label className="label">التخريج / المصدر</label>
-        <input name="source" className="field" />
+        <label className="label">التخريج</label>
+        <input name="takhrij" className="field leading-loose" />
       </div>
 
       {error && <p className="text-sm text-deep">{error}</p>}

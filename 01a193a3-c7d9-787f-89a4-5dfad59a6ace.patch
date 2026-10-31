@@ -1,0 +1,4940 @@
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..2bc012f
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,18 @@
++# ── Production (Vercel + Neon) ──────────────────────────────
++# When DATABASE_URL is set, the app uses Neon PostgreSQL (serverless driver).
++# Vercel Marketplace integration sets this automatically.
++DATABASE_URL=postgres://user:pass@ep-xxx.region.aws.neon.tech/neondb?sslmode=require
++
++# Better Auth
++BETTER_AUTH_SECRET=change-me-to-a-long-random-string
++BETTER_AUTH_URL=https://your-app.vercel.app
++NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
++
++# Local development (no DATABASE_URL) → embedded PGlite at PGLITE_DIR
++PGLITE_DIR=./.data/pglite
++
++# Seed script (creates the teacher account + demo data)
++ADMIN_USERNAME=admin
++ADMIN_EMAIL=admin@refqah.local
++ADMIN_PASSWORD=admin12345
++SEED_DEMO_STUDENTS=true
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..46987d5
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,19 @@
++# dependencies
++node_modules/
++
++# next.js
++/.next/
++/out/
++
++# local embedded database (PGlite) — do not commit data
++/.data/
++
++# env
++/.env
++/.env.local
++/.env*.local
++
++# misc
++*.tsbuildinfo
++next-env.d.ts
++.DS_Store
+diff --git a/drizzle.config.ts b/drizzle.config.ts
+new file mode 100644
+index 0000000..55abee8
+--- /dev/null
++++ b/drizzle.config.ts
+@@ -0,0 +1,10 @@
++import { defineConfig } from "drizzle-kit";
++
++export default defineConfig({
++  dialect: "postgresql",
++  schema: "./src/lib/db/schema.ts",
++  out: "./drizzle",
++  dbCredentials: {
++    url: process.env.DATABASE_URL ?? "postgres://localhost:5432/refqah",
++  },
++});
+diff --git a/drizzle/0000_init.sql b/drizzle/0000_init.sql
+new file mode 100644
+index 0000000..eccf5a3
+--- /dev/null
++++ b/drizzle/0000_init.sql
+@@ -0,0 +1,120 @@
++CREATE TABLE "account" (
++	"id" text PRIMARY KEY NOT NULL,
++	"account_id" text NOT NULL,
++	"provider_id" text NOT NULL,
++	"user_id" text NOT NULL,
++	"access_token" text,
++	"refresh_token" text,
++	"id_token" text,
++	"access_token_expires_at" timestamp,
++	"refresh_token_expires_at" timestamp,
++	"scope" text,
++	"password" text,
++	"created_at" timestamp DEFAULT now() NOT NULL,
++	"updated_at" timestamp DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "achievement" (
++	"id" text PRIMARY KEY NOT NULL,
++	"student_id" text NOT NULL,
++	"type" text NOT NULL,
++	"hadith_id" text,
++	"title" text NOT NULL,
++	"description" text,
++	"awarded_at" timestamp DEFAULT now() NOT NULL,
++	"created_at" timestamp DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "competition_settings" (
++	"id" text PRIMARY KEY DEFAULT 'main' NOT NULL,
++	"enabled" boolean DEFAULT false NOT NULL,
++	"updated_at" timestamp DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "hadith" (
++	"id" text PRIMARY KEY NOT NULL,
++	"order" integer NOT NULL,
++	"title" text NOT NULL,
++	"arabic_text" text NOT NULL,
++	"source" text,
++	"published" boolean DEFAULT false NOT NULL,
++	"published_at" timestamp,
++	"created_at" timestamp DEFAULT now() NOT NULL,
++	"updated_at" timestamp DEFAULT now() NOT NULL,
++	CONSTRAINT "hadith_order_unique" UNIQUE("order")
++);
++--> statement-breakpoint
++CREATE TABLE "message" (
++	"id" text PRIMARY KEY NOT NULL,
++	"text" text NOT NULL,
++	"category" text,
++	"active" boolean DEFAULT true NOT NULL,
++	"created_at" timestamp DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "recitation" (
++	"id" text PRIMARY KEY NOT NULL,
++	"student_id" text NOT NULL,
++	"hadith_id" text NOT NULL,
++	"recited" boolean DEFAULT false NOT NULL,
++	"recited_at" timestamp,
++	"updated_at" timestamp DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "session" (
++	"id" text PRIMARY KEY NOT NULL,
++	"expires_at" timestamp NOT NULL,
++	"token" text NOT NULL,
++	"created_at" timestamp DEFAULT now() NOT NULL,
++	"updated_at" timestamp DEFAULT now() NOT NULL,
++	"ip_address" text,
++	"user_agent" text,
++	"user_id" text NOT NULL,
++	CONSTRAINT "session_token_unique" UNIQUE("token")
++);
++--> statement-breakpoint
++CREATE TABLE "student" (
++	"id" text PRIMARY KEY NOT NULL,
++	"user_id" text NOT NULL,
++	"display_name" text NOT NULL,
++	"avatar_url" text,
++	"competition_opt_in" boolean DEFAULT false NOT NULL,
++	"created_at" timestamp DEFAULT now() NOT NULL,
++	"updated_at" timestamp DEFAULT now() NOT NULL,
++	CONSTRAINT "student_user_id_unique" UNIQUE("user_id")
++);
++--> statement-breakpoint
++CREATE TABLE "user" (
++	"id" text PRIMARY KEY NOT NULL,
++	"name" text NOT NULL,
++	"email" text NOT NULL,
++	"email_verified" boolean DEFAULT false NOT NULL,
++	"image" text,
++	"username" text,
++	"display_username" text,
++	"role" text DEFAULT 'student' NOT NULL,
++	"created_at" timestamp DEFAULT now() NOT NULL,
++	"updated_at" timestamp DEFAULT now() NOT NULL,
++	CONSTRAINT "user_email_unique" UNIQUE("email"),
++	CONSTRAINT "user_username_unique" UNIQUE("username")
++);
++--> statement-breakpoint
++CREATE TABLE "verification" (
++	"id" text PRIMARY KEY NOT NULL,
++	"identifier" text NOT NULL,
++	"value" text NOT NULL,
++	"expires_at" timestamp NOT NULL,
++	"created_at" timestamp DEFAULT now() NOT NULL,
++	"updated_at" timestamp DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "achievement" ADD CONSTRAINT "achievement_student_id_student_id_fk" FOREIGN KEY ("student_id") REFERENCES "public"."student"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "achievement" ADD CONSTRAINT "achievement_hadith_id_hadith_id_fk" FOREIGN KEY ("hadith_id") REFERENCES "public"."hadith"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "recitation" ADD CONSTRAINT "recitation_student_id_student_id_fk" FOREIGN KEY ("student_id") REFERENCES "public"."student"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "recitation" ADD CONSTRAINT "recitation_hadith_id_hadith_id_fk" FOREIGN KEY ("hadith_id") REFERENCES "public"."hadith"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "student" ADD CONSTRAINT "student_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++CREATE UNIQUE INDEX "recitation_student_hadith_uidx" ON "recitation" USING btree ("student_id","hadith_id");--> statement-breakpoint
++CREATE INDEX "recitation_hadith_idx" ON "recitation" USING btree ("hadith_id");--> statement-breakpoint
++CREATE INDEX "recitation_student_idx" ON "recitation" USING btree ("student_id");
+\ No newline at end of file
+diff --git a/drizzle/meta/0000_snapshot.json b/drizzle/meta/0000_snapshot.json
+new file mode 100644
+index 0000000..493bc86
+--- /dev/null
++++ b/drizzle/meta/0000_snapshot.json
+@@ -0,0 +1,811 @@
++{
++  "id": "559ef3d2-fd2f-4288-ad71-4c4c2d8da94a",
++  "prevId": "00000000-0000-0000-0000-000000000000",
++  "version": "7",
++  "dialect": "postgresql",
++  "tables": {
++    "public.account": {
++      "name": "account",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "account_id": {
++          "name": "account_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "provider_id": {
++          "name": "provider_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "user_id": {
++          "name": "user_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "access_token": {
++          "name": "access_token",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "refresh_token": {
++          "name": "refresh_token",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "id_token": {
++          "name": "id_token",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "access_token_expires_at": {
++          "name": "access_token_expires_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "refresh_token_expires_at": {
++          "name": "refresh_token_expires_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "scope": {
++          "name": "scope",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "password": {
++          "name": "password",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "account_user_id_user_id_fk": {
++          "name": "account_user_id_user_id_fk",
++          "tableFrom": "account",
++          "tableTo": "user",
++          "columnsFrom": [
++            "user_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.achievement": {
++      "name": "achievement",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "student_id": {
++          "name": "student_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "type": {
++          "name": "type",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "hadith_id": {
++          "name": "hadith_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "title": {
++          "name": "title",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "description": {
++          "name": "description",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "awarded_at": {
++          "name": "awarded_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "achievement_student_id_student_id_fk": {
++          "name": "achievement_student_id_student_id_fk",
++          "tableFrom": "achievement",
++          "tableTo": "student",
++          "columnsFrom": [
++            "student_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        },
++        "achievement_hadith_id_hadith_id_fk": {
++          "name": "achievement_hadith_id_hadith_id_fk",
++          "tableFrom": "achievement",
++          "tableTo": "hadith",
++          "columnsFrom": [
++            "hadith_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "set null",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.competition_settings": {
++      "name": "competition_settings",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true,
++          "default": "'main'"
++        },
++        "enabled": {
++          "name": "enabled",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "default": false
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.hadith": {
++      "name": "hadith",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "order": {
++          "name": "order",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "title": {
++          "name": "title",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "arabic_text": {
++          "name": "arabic_text",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "source": {
++          "name": "source",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "published": {
++          "name": "published",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "default": false
++        },
++        "published_at": {
++          "name": "published_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {
++        "hadith_order_unique": {
++          "name": "hadith_order_unique",
++          "nullsNotDistinct": false,
++          "columns": [
++            "order"
++          ]
++        }
++      },
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.message": {
++      "name": "message",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "text": {
++          "name": "text",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "category": {
++          "name": "category",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "active": {
++          "name": "active",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "default": true
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.recitation": {
++      "name": "recitation",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "student_id": {
++          "name": "student_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "hadith_id": {
++          "name": "hadith_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "recited": {
++          "name": "recited",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "default": false
++        },
++        "recited_at": {
++          "name": "recited_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {
++        "recitation_student_hadith_uidx": {
++          "name": "recitation_student_hadith_uidx",
++          "columns": [
++            {
++              "expression": "student_id",
++              "isExpression": false,
++              "asc": true,
++              "nulls": "last"
++            },
++            {
++              "expression": "hadith_id",
++              "isExpression": false,
++              "asc": true,
++              "nulls": "last"
++            }
++          ],
++          "isUnique": true,
++          "concurrently": false,
++          "method": "btree",
++          "with": {}
++        },
++        "recitation_hadith_idx": {
++          "name": "recitation_hadith_idx",
++          "columns": [
++            {
++              "expression": "hadith_id",
++              "isExpression": false,
++              "asc": true,
++              "nulls": "last"
++            }
++          ],
++          "isUnique": false,
++          "concurrently": false,
++          "method": "btree",
++          "with": {}
++        },
++        "recitation_student_idx": {
++          "name": "recitation_student_idx",
++          "columns": [
++            {
++              "expression": "student_id",
++              "isExpression": false,
++              "asc": true,
++              "nulls": "last"
++            }
++          ],
++          "isUnique": false,
++          "concurrently": false,
++          "method": "btree",
++          "with": {}
++        }
++      },
++      "foreignKeys": {
++        "recitation_student_id_student_id_fk": {
++          "name": "recitation_student_id_student_id_fk",
++          "tableFrom": "recitation",
++          "tableTo": "student",
++          "columnsFrom": [
++            "student_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        },
++        "recitation_hadith_id_hadith_id_fk": {
++          "name": "recitation_hadith_id_hadith_id_fk",
++          "tableFrom": "recitation",
++          "tableTo": "hadith",
++          "columnsFrom": [
++            "hadith_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.session": {
++      "name": "session",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "expires_at": {
++          "name": "expires_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "token": {
++          "name": "token",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "ip_address": {
++          "name": "ip_address",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "user_agent": {
++          "name": "user_agent",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "user_id": {
++          "name": "user_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "session_user_id_user_id_fk": {
++          "name": "session_user_id_user_id_fk",
++          "tableFrom": "session",
++          "tableTo": "user",
++          "columnsFrom": [
++            "user_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {
++        "session_token_unique": {
++          "name": "session_token_unique",
++          "nullsNotDistinct": false,
++          "columns": [
++            "token"
++          ]
++        }
++      },
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.student": {
++      "name": "student",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "user_id": {
++          "name": "user_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "display_name": {
++          "name": "display_name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "avatar_url": {
++          "name": "avatar_url",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "competition_opt_in": {
++          "name": "competition_opt_in",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "default": false
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "student_user_id_user_id_fk": {
++          "name": "student_user_id_user_id_fk",
++          "tableFrom": "student",
++          "tableTo": "user",
++          "columnsFrom": [
++            "user_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {
++        "student_user_id_unique": {
++          "name": "student_user_id_unique",
++          "nullsNotDistinct": false,
++          "columns": [
++            "user_id"
++          ]
++        }
++      },
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.user": {
++      "name": "user",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "name": {
++          "name": "name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "email": {
++          "name": "email",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "email_verified": {
++          "name": "email_verified",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "default": false
++        },
++        "image": {
++          "name": "image",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "username": {
++          "name": "username",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "display_username": {
++          "name": "display_username",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "role": {
++          "name": "role",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'student'"
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {
++        "user_email_unique": {
++          "name": "user_email_unique",
++          "nullsNotDistinct": false,
++          "columns": [
++            "email"
++          ]
++        },
++        "user_username_unique": {
++          "name": "user_username_unique",
++          "nullsNotDistinct": false,
++          "columns": [
++            "username"
++          ]
++        }
++      },
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.verification": {
++      "name": "verification",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "text",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "identifier": {
++          "name": "identifier",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "value": {
++          "name": "value",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "expires_at": {
++          "name": "expires_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    }
++  },
++  "enums": {},
++  "schemas": {},
++  "sequences": {},
++  "roles": {},
++  "policies": {},
++  "views": {},
++  "_meta": {
++    "columns": {},
++    "schemas": {},
++    "tables": {}
++  }
++}
+\ No newline at end of file
+diff --git a/drizzle/meta/_journal.json b/drizzle/meta/_journal.json
+new file mode 100644
+index 0000000..7e67c5b
+--- /dev/null
++++ b/drizzle/meta/_journal.json
+@@ -0,0 +1,13 @@
++{
++  "version": "7",
++  "dialect": "postgresql",
++  "entries": [
++    {
++      "idx": 0,
++      "version": "7",
++      "when": 1793478668489,
++      "tag": "0000_init",
++      "breakpoints": true
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/next.config.mjs b/next.config.mjs
+new file mode 100644
+index 0000000..eb2c03a
+--- /dev/null
++++ b/next.config.mjs
+@@ -0,0 +1,7 @@
++/** @type {import('next').NextConfig} */
++const nextConfig = {
++  experimental: { instrumentationHook: true },
++  eslint: { ignoreDuringBuilds: true },
++};
++
++export default nextConfig;
+diff --git a/package-lock.json b/package-lock.json
+new file mode 100644
+index 0000000..6589911
+--- /dev/null
++++ b/package-lock.json
+@@ -0,0 +1,3394 @@
++{
++  "name": "refqah-al-arbaeen",
++  "version": "1.0.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "refqah-al-arbaeen",
++      "version": "1.0.0",
++      "dependencies": {
++        "@electric-sql/pglite": "0.5.14",
++        "@fontsource/amiri": "5.3.0",
++        "@fontsource/tajawal": "5.3.0",
++        "@neondatabase/serverless": "1.2.0",
++        "better-auth": "1.7.14",
++        "drizzle-orm": "0.45.4",
++        "next": "14.2.35",
++        "react": "18.3.1",
++        "react-dom": "18.3.1"
++      },
++      "devDependencies": {
++        "@types/node": "22.x",
++        "@types/react": "18.x",
++        "@types/react-dom": "18.x",
++        "autoprefixer": "10.4.20",
++        "drizzle-kit": "0.31.4",
++        "postcss": "8.4.49",
++        "tailwindcss": "3.4.17",
++        "tsx": "4.23.15",
++        "typescript": "5.6.3"
++      }
++    },
++    "node_modules/@alloc/quick-lru": {
++      "version": "5.3.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/@better-auth/core": {
++      "version": "1.7.14",
++      "license": "MIT",
++      "dependencies": {
++        "@standard-schema/spec": "^1.1.0",
++        "zod": "^4.5.4"
++      },
++      "peerDependencies": {
++        "@better-auth/utils": "^0.4.2 || ^0.5.0",
++        "@better-fetch/fetch": "1.3.3",
++        "@opentelemetry/api": "^1.9.0",
++        "better-call": "1.4.4",
++        "jose": "^6.1.0",
++        "kysely": "^0.28.5 || ^0.29.0",
++        "nanostores": "^1.0.1"
++      },
++      "peerDependenciesMeta": {
++        "@opentelemetry/api": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@better-auth/drizzle-adapter": {
++      "version": "1.7.14",
++      "license": "MIT",
++      "peerDependencies": {
++        "@better-auth/core": "^1.7.14",
++        "@better-auth/utils": "^0.4.2 || ^0.5.0",
++        "drizzle-orm": "^0.45.2 || >=1.0.0-rc.1 <2.0.0"
++      },
++      "peerDependenciesMeta": {
++        "drizzle-orm": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@better-auth/kysely-adapter": {
++      "version": "1.7.14",
++      "license": "MIT",
++      "peerDependencies": {
++        "@better-auth/core": "^1.7.14",
++        "@better-auth/utils": "^0.4.2 || ^0.5.0",
++        "kysely": "^0.28.17 || ^0.29.0"
++      },
++      "peerDependenciesMeta": {
++        "kysely": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@better-auth/memory-adapter": {
++      "version": "1.7.14",
++      "license": "MIT",
++      "peerDependencies": {
++        "@better-auth/core": "^1.7.14",
++        "@better-auth/utils": "^0.4.2 || ^0.5.0"
++      }
++    },
++    "node_modules/@better-auth/mongo-adapter": {
++      "version": "1.7.14",
++      "license": "MIT",
++      "peerDependencies": {
++        "@better-auth/core": "^1.7.14",
++        "@better-auth/utils": "^0.4.2 || ^0.5.0",
++        "mongodb": "^6.0.0 || ^7.0.0"
++      },
++      "peerDependenciesMeta": {
++        "mongodb": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@better-auth/prisma-adapter": {
++      "version": "1.7.14",
++      "license": "MIT",
++      "peerDependencies": {
++        "@better-auth/core": "^1.7.14",
++        "@better-auth/utils": "^0.4.2 || ^0.5.0",
++        "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0",
++        "prisma": "^5.0.0 || ^6.0.0 || ^7.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@prisma/client": {
++          "optional": true
++        },
++        "prisma": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@better-auth/telemetry": {
++      "version": "1.7.14",
++      "license": "MIT",
++      "peerDependencies": {
++        "@better-auth/core": "^1.7.14",
++        "@better-auth/utils": "^0.4.2 || ^0.5.0",
++        "@better-fetch/fetch": "1.3.3"
++      }
++    },
++    "node_modules/@better-auth/utils": {
++      "version": "0.5.1",
++      "license": "MIT",
++      "dependencies": {
++        "@noble/hashes": "^2.0.1"
++      }
++    },
++    "node_modules/@better-fetch/fetch": {
++      "version": "1.3.3",
++      "license": "MIT"
++    },
++    "node_modules/@drizzle-team/brocli": {
++      "version": "0.10.2",
++      "devOptional": true,
++      "license": "Apache-2.0"
++    },
++    "node_modules/@electric-sql/pglite": {
++      "version": "0.5.14",
++      "license": "Apache-2.0"
++    },
++    "node_modules/@esbuild-kit/core-utils": {
++      "version": "3.3.2",
++      "devOptional": true,
++      "license": "MIT",
++      "dependencies": {
++        "esbuild": "~0.18.20",
++        "source-map-support": "^0.5.21"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/@esbuild/linux-x64": {
++      "version": "0.18.20",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild": {
++      "version": "0.18.20",
++      "devOptional": true,
++      "hasInstallScript": true,
++      "license": "MIT",
++      "bin": {
++        "esbuild": "bin/esbuild"
++      },
++      "engines": {
++        "node": ">=12"
++      },
++      "optionalDependencies": {
++        "@esbuild/android-arm": "0.18.20",
++        "@esbuild/android-arm64": "0.18.20",
++        "@esbuild/android-x64": "0.18.20",
++        "@esbuild/darwin-arm64": "0.18.20",
++        "@esbuild/darwin-x64": "0.18.20",
++        "@esbuild/freebsd-arm64": "0.18.20",
++        "@esbuild/freebsd-x64": "0.18.20",
++        "@esbuild/linux-arm": "0.18.20",
++        "@esbuild/linux-arm64": "0.18.20",
++        "@esbuild/linux-ia32": "0.18.20",
++        "@esbuild/linux-loong64": "0.18.20",
++        "@esbuild/linux-mips64el": "0.18.20",
++        "@esbuild/linux-ppc64": "0.18.20",
++        "@esbuild/linux-riscv64": "0.18.20",
++        "@esbuild/linux-s390x": "0.18.20",
++        "@esbuild/linux-x64": "0.18.20",
++        "@esbuild/netbsd-x64": "0.18.20",
++        "@esbuild/openbsd-x64": "0.18.20",
++        "@esbuild/sunos-x64": "0.18.20",
++        "@esbuild/win32-arm64": "0.18.20",
++        "@esbuild/win32-ia32": "0.18.20",
++        "@esbuild/win32-x64": "0.18.20"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/android-arm": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.18.20.tgz",
++      "integrity": "sha512-fyi7TDI/ijKKNZTUJAQqiG5T7YjJXgnzkURqmGj13C6dCqckZBLdl4h7bkhHt/t0WP+zO9/zwroDvANaOqO5Sw==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/android-arm64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.18.20.tgz",
++      "integrity": "sha512-Nz4rJcchGDtENV0eMKUNa6L12zz2zBDXuhj/Vjh18zGqB44Bi7MBMSXjgunJgjRhCmKOjnPuZp4Mb6OKqtMHLQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/android-x64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.18.20.tgz",
++      "integrity": "sha512-8GDdlePJA8D6zlZYJV/jnrRAi6rOiNaCC/JclcXpB+KIuvfBN4owLtgzY2bsxnx666XjJx2kDPUmnTtR8qKQUg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/darwin-arm64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.18.20.tgz",
++      "integrity": "sha512-bxRHW5kHU38zS2lPTPOyuyTm+S+eobPUnTNkdJEfAddYgEcll4xkT8DB9d2008DtTbl7uJag2HuE5NZAZgnNEA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/darwin-x64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.18.20.tgz",
++      "integrity": "sha512-pc5gxlMDxzm513qPGbCbDukOdsGtKhfxD1zJKXjCCcU7ju50O7MeAZ8c4krSJcOIJGFR+qx21yMMVYwiQvyTyQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/freebsd-arm64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.18.20.tgz",
++      "integrity": "sha512-yqDQHy4QHevpMAaxhhIwYPMv1NECwOvIpGCZkECn8w2WFHXjEwrBn3CeNIYsibZ/iZEUemj++M26W3cNR5h+Tw==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/freebsd-x64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.18.20.tgz",
++      "integrity": "sha512-tgWRPPuQsd3RmBZwarGVHZQvtzfEBOreNuxEMKFcd5DaDn2PbBxfwLcj4+aenoh7ctXcbXmOQIn8HI6mCSw5MQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/linux-arm": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.18.20.tgz",
++      "integrity": "sha512-/5bHkMWnq1EgKr1V+Ybz3s1hWXok7mDFUMQ4cG10AfW3wL02PSZi5kFpYKrptDsgb2WAJIvRcDm+qIvXf/apvg==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/linux-arm64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.18.20.tgz",
++      "integrity": "sha512-2YbscF+UL7SQAVIpnWvYwM+3LskyDmPhe31pE7/aoTMFKKzIc9lLbyGUpmmb8a8AixOL61sQ/mFh3jEjHYFvdA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/linux-ia32": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.18.20.tgz",
++      "integrity": "sha512-P4etWwq6IsReT0E1KHU40bOnzMHoH73aXp96Fs8TIT6z9Hu8G6+0SHSw9i2isWrD2nbx2qo5yUqACgdfVGx7TA==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/linux-loong64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.18.20.tgz",
++      "integrity": "sha512-nXW8nqBTrOpDLPgPY9uV+/1DjxoQ7DoB2N8eocyq8I9XuqJ7BiAMDMf9n1xZM9TgW0J8zrquIb/A7s3BJv7rjg==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/linux-mips64el": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.18.20.tgz",
++      "integrity": "sha512-d5NeaXZcHp8PzYy5VnXV3VSd2D328Zb+9dEq5HE6bw6+N86JVPExrA6O68OPwobntbNJ0pzCpUFZTo3w0GyetQ==",
++      "cpu": [
++        "mips64el"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/linux-ppc64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.18.20.tgz",
++      "integrity": "sha512-WHPyeScRNcmANnLQkq6AfyXRFr5D6N2sKgkFo2FqguP44Nw2eyDlbTdZwd9GYk98DZG9QItIiTlFLHJHjxP3FA==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/linux-riscv64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.18.20.tgz",
++      "integrity": "sha512-WSxo6h5ecI5XH34KC7w5veNnKkju3zBRLEQNY7mv5mtBmrP/MjNBCAlsM2u5hDBlS3NGcTQpoBvRzqBcRtpq1A==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/linux-s390x": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.18.20.tgz",
++      "integrity": "sha512-+8231GMs3mAEth6Ja1iK0a1sQ3ohfcpzpRLH8uuc5/KVDFneH6jtAJLFGafpzpMRO6DzJ6AvXKze9LfFMrIHVQ==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/netbsd-x64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.18.20.tgz",
++      "integrity": "sha512-iO1c++VP6xUBUmltHZoMtCUdPlnPGdBom6IrO4gyKPFFVBKioIImVooR5I83nTew5UOYrk3gIJhbZh8X44y06A==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/openbsd-x64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.18.20.tgz",
++      "integrity": "sha512-e5e4YSsuQfX4cxcygw/UCPIEP6wbIL+se3sxPdCiMbFLBWu0eiZOJ7WoD+ptCLrmjZBK1Wk7I6D/I3NglUGOxg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/sunos-x64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.18.20.tgz",
++      "integrity": "sha512-kDbFRFp0YpTQVVrqUd5FTYmWo45zGaXe0X8E1G/LKFC0v8x0vWrhOWSLITcCn63lmZIxfOMXtCfti/RxN/0wnQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "sunos"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/win32-arm64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.18.20.tgz",
++      "integrity": "sha512-ddYFR6ItYgoaq4v4JmQQaAI5s7npztfV4Ag6NrhiaW0RrnOXqBkgwZLofVTlq1daVTQNhtI5oieTvkRPfZrePg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/win32-ia32": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.18.20.tgz",
++      "integrity": "sha512-Wv7QBi3ID/rROT08SABTS7eV4hX26sVduqDOTe1MvGMjNd3EjOz4b7zeexIR62GTIEKrfJXKL9LFxTYgkyeu7g==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/core-utils/node_modules/esbuild/node_modules/@esbuild/win32-x64": {
++      "version": "0.18.20",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.18.20.tgz",
++      "integrity": "sha512-kTdfRcSiDfQca/y9QIkng02avJ+NCaQvrMejlsB3RRv5sE9rRoeBPISaZpKxHELzRxZyLvNts1P27W3wV+8geQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/@esbuild-kit/esm-loader": {
++      "version": "2.6.5",
++      "devOptional": true,
++      "license": "MIT",
++      "dependencies": {
++        "@esbuild-kit/core-utils": "^3.3.2",
++        "get-tsconfig": "^4.7.0"
++      }
++    },
++    "node_modules/@esbuild/linux-x64": {
++      "version": "0.25.12",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@fontsource/amiri": {
++      "version": "5.3.0",
++      "license": "OFL-1.1",
++      "funding": {
++        "url": "https://github.com/sponsors/ayuhito"
++      }
++    },
++    "node_modules/@fontsource/tajawal": {
++      "version": "5.3.0",
++      "license": "OFL-1.1",
++      "funding": {
++        "url": "https://github.com/sponsors/ayuhito"
++      }
++    },
++    "node_modules/@jridgewell/gen-mapping": {
++      "version": "0.3.13",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@jridgewell/sourcemap-codec": "^1.5.0",
++        "@jridgewell/trace-mapping": "^0.3.24"
++      }
++    },
++    "node_modules/@jridgewell/resolve-uri": {
++      "version": "3.1.2",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=6.0.0"
++      }
++    },
++    "node_modules/@jridgewell/sourcemap-codec": {
++      "version": "1.6.0",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@jridgewell/trace-mapping": {
++      "version": "0.3.31",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@jridgewell/resolve-uri": "^3.1.0",
++        "@jridgewell/sourcemap-codec": "^1.4.14"
++      }
++    },
++    "node_modules/@neondatabase/serverless": {
++      "version": "1.2.0",
++      "license": "MIT",
++      "engines": {
++        "node": ">=19.0.0"
++      }
++    },
++    "node_modules/@next/env": {
++      "version": "14.2.35",
++      "license": "MIT"
++    },
++    "node_modules/@next/swc-linux-x64-gnu": {
++      "version": "14.2.33",
++      "cpu": [
++        "x64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/@noble/ciphers": {
++      "version": "2.4.0",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 20.19.0"
++      },
++      "funding": {
++        "url": "https://paulmillr.com/funding/"
++      }
++    },
++    "node_modules/@noble/hashes": {
++      "version": "2.4.0",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 20.19.0"
++      },
++      "funding": {
++        "url": "https://paulmillr.com/funding/"
++      }
++    },
++    "node_modules/@nodelib/fs.scandir": {
++      "version": "2.1.5",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@nodelib/fs.stat": "2.0.5",
++        "run-parallel": "^1.1.9"
++      },
++      "engines": {
++        "node": ">= 8"
++      }
++    },
++    "node_modules/@nodelib/fs.stat": {
++      "version": "2.0.5",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 8"
++      }
++    },
++    "node_modules/@nodelib/fs.walk": {
++      "version": "1.2.8",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@nodelib/fs.scandir": "2.1.5",
++        "fastq": "^1.6.0"
++      },
++      "engines": {
++        "node": ">= 8"
++      }
++    },
++    "node_modules/@standard-schema/spec": {
++      "version": "1.1.0",
++      "license": "MIT"
++    },
++    "node_modules/@swc/counter": {
++      "version": "0.1.3",
++      "license": "Apache-2.0"
++    },
++    "node_modules/@swc/helpers": {
++      "version": "0.5.5",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@swc/counter": "^0.1.3",
++        "tslib": "^2.4.0"
++      }
++    },
++    "node_modules/@types/node": {
++      "version": "22.20.5",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "undici-types": "~6.21.0"
++      }
++    },
++    "node_modules/@types/prop-types": {
++      "version": "15.7.15",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@types/react": {
++      "version": "18.3.31",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/prop-types": "*",
++        "csstype": "^3.2.2"
++      }
++    },
++    "node_modules/@types/react-dom": {
++      "version": "18.3.7",
++      "dev": true,
++      "license": "MIT",
++      "peerDependencies": {
++        "@types/react": "^18.0.0"
++      }
++    },
++    "node_modules/any-promise": {
++      "version": "1.3.0",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/anymatch": {
++      "version": "3.1.3",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "normalize-path": "^3.0.0",
++        "picomatch": "^2.0.4"
++      },
++      "engines": {
++        "node": ">= 8"
++      }
++    },
++    "node_modules/arg": {
++      "version": "5.0.2",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/autoprefixer": {
++      "version": "10.4.20",
++      "dev": true,
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/postcss/"
++        },
++        {
++          "type": "tidelift",
++          "url": "https://tidelift.com/funding/github/npm/autoprefixer"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "browserslist": "^4.23.3",
++        "caniuse-lite": "^1.0.30001646",
++        "fraction.js": "^4.3.7",
++        "normalize-range": "^0.1.2",
++        "picocolors": "^1.0.1",
++        "postcss-value-parser": "^4.2.0"
++      },
++      "bin": {
++        "autoprefixer": "bin/autoprefixer"
++      },
++      "engines": {
++        "node": "^10 || ^12 || >=14"
++      },
++      "peerDependencies": {
++        "postcss": "^8.1.0"
++      }
++    },
++    "node_modules/baseline-browser-mapping": {
++      "version": "2.11.34",
++      "dev": true,
++      "license": "Apache-2.0",
++      "bin": {
++        "baseline-browser-mapping": "dist/cli.cjs"
++      },
++      "engines": {
++        "node": ">=6.0.0"
++      }
++    },
++    "node_modules/better-auth": {
++      "version": "1.7.14",
++      "license": "MIT",
++      "dependencies": {
++        "@better-auth/core": "1.7.14",
++        "@better-auth/drizzle-adapter": "1.7.14",
++        "@better-auth/kysely-adapter": "1.7.14",
++        "@better-auth/memory-adapter": "1.7.14",
++        "@better-auth/mongo-adapter": "1.7.14",
++        "@better-auth/prisma-adapter": "1.7.14",
++        "@better-auth/telemetry": "1.7.14",
++        "@better-auth/utils": "0.5.1",
++        "@better-fetch/fetch": "1.3.3",
++        "@noble/ciphers": "^2.2.0",
++        "@noble/hashes": "^2.2.0",
++        "better-call": "1.4.4",
++        "defu": "^6.1.4",
++        "jose": "^6.2.3",
++        "kysely": "^0.28.17 || ^0.29.0",
++        "nanostores": "^1.3.0",
++        "zod": "^4.5.4"
++      },
++      "peerDependencies": {
++        "@lynx-js/react": "*",
++        "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0",
++        "@sveltejs/kit": "^2.0.0 || ^3.0.0",
++        "@tanstack/react-start": "^1.0.0",
++        "@tanstack/solid-start": "^1.0.0",
++        "drizzle-kit": ">=0.31.4 || >=1.0.0-beta.1",
++        "drizzle-orm": "^0.45.2 || >=1.0.0-rc.1 <2.0.0",
++        "mongodb": "^6.0.0 || ^7.0.0",
++        "mysql2": "^3.0.0",
++        "next": "^14.0.0 || ^15.0.0 || ^16.0.0",
++        "pg": "^8.0.0",
++        "prisma": "^5.0.0 || ^6.0.0 || ^7.0.0",
++        "react": "^18.0.0 || ^19.0.0",
++        "react-dom": "^18.0.0 || ^19.0.0",
++        "solid-js": "^1.0.0",
++        "svelte": "^4.0.0 || ^5.0.0",
++        "vitest": "^2.0.0 || ^3.0.0 || ^4.0.0 || ^5.0.0",
++        "vue": "^3.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@lynx-js/react": {
++          "optional": true
++        },
++        "@prisma/client": {
++          "optional": true
++        },
++        "@sveltejs/kit": {
++          "optional": true
++        },
++        "@tanstack/react-start": {
++          "optional": true
++        },
++        "@tanstack/solid-start": {
++          "optional": true
++        },
++        "drizzle-kit": {
++          "optional": true
++        },
++        "drizzle-orm": {
++          "optional": true
++        },
++        "mongodb": {
++          "optional": true
++        },
++        "mysql2": {
++          "optional": true
++        },
++        "next": {
++          "optional": true
++        },
++        "pg": {
++          "optional": true
++        },
++        "prisma": {
++          "optional": true
++        },
++        "react": {
++          "optional": true
++        },
++        "react-dom": {
++          "optional": true
++        },
++        "solid-js": {
++          "optional": true
++        },
++        "svelte": {
++          "optional": true
++        },
++        "vitest": {
++          "optional": true
++        },
++        "vue": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/better-call": {
++      "version": "1.4.4",
++      "license": "MIT",
++      "dependencies": {
++        "@better-auth/utils": "^0.5.0",
++        "@better-fetch/fetch": "^1.3.1",
++        "rou3": "^0.9.1",
++        "set-cookie-parser": "^3.1.2"
++      },
++      "peerDependencies": {
++        "zod": "^4.0.0"
++      },
++      "peerDependenciesMeta": {
++        "zod": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/binary-extensions": {
++      "version": "2.3.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=8"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/braces": {
++      "version": "3.0.3",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "fill-range": "^7.1.1"
++      },
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/browserslist": {
++      "version": "4.29.5",
++      "dev": true,
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/browserslist"
++        },
++        {
++          "type": "tidelift",
++          "url": "https://tidelift.com/funding/github/npm/browserslist"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "baseline-browser-mapping": "^2.11.33",
++        "caniuse-lite": "^1.0.30001819",
++        "electron-to-chromium": "^1.5.464",
++        "node-releases": "^2.0.60",
++        "update-browserslist-db": "^1.3.4"
++      },
++      "bin": {
++        "browserslist": "cli.js"
++      },
++      "engines": {
++        "node": "^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7"
++      }
++    },
++    "node_modules/buffer-from": {
++      "version": "1.1.2",
++      "devOptional": true,
++      "license": "MIT"
++    },
++    "node_modules/busboy": {
++      "version": "1.6.0",
++      "dependencies": {
++        "streamsearch": "^1.1.0"
++      },
++      "engines": {
++        "node": ">=10.16.0"
++      }
++    },
++    "node_modules/camelcase-css": {
++      "version": "2.0.1",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/caniuse-lite": {
++      "version": "1.0.30001820",
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/browserslist"
++        },
++        {
++          "type": "tidelift",
++          "url": "https://tidelift.com/funding/github/npm/caniuse-lite"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "CC-BY-4.0"
++    },
++    "node_modules/chokidar": {
++      "version": "3.6.0",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "anymatch": "~3.1.2",
++        "braces": "~3.0.2",
++        "glob-parent": "~5.1.2",
++        "is-binary-path": "~2.1.0",
++        "is-glob": "~4.0.1",
++        "normalize-path": "~3.0.0",
++        "readdirp": "~3.6.0"
++      },
++      "engines": {
++        "node": ">= 8.10.0"
++      },
++      "funding": {
++        "url": "https://paulmillr.com/funding/"
++      },
++      "optionalDependencies": {
++        "fsevents": "~2.3.2"
++      }
++    },
++    "node_modules/chokidar/node_modules/fsevents": {
++      "version": "2.3.3",
++      "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
++      "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
++      "dev": true,
++      "hasInstallScript": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
++      }
++    },
++    "node_modules/chokidar/node_modules/glob-parent": {
++      "version": "5.1.2",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "is-glob": "^4.0.1"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/client-only": {
++      "version": "0.0.1",
++      "license": "MIT"
++    },
++    "node_modules/commander": {
++      "version": "4.1.1",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/cssesc": {
++      "version": "3.0.0",
++      "dev": true,
++      "license": "MIT",
++      "bin": {
++        "cssesc": "bin/cssesc"
++      },
++      "engines": {
++        "node": ">=4"
++      }
++    },
++    "node_modules/csstype": {
++      "version": "3.2.3",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/debug": {
++      "version": "4.4.3",
++      "devOptional": true,
++      "license": "MIT",
++      "dependencies": {
++        "ms": "^2.1.3"
++      },
++      "engines": {
++        "node": ">=6.0"
++      },
++      "peerDependenciesMeta": {
++        "supports-color": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/defu": {
++      "version": "6.1.7",
++      "license": "MIT"
++    },
++    "node_modules/didyoumean": {
++      "version": "1.2.2",
++      "dev": true,
++      "license": "Apache-2.0"
++    },
++    "node_modules/dlv": {
++      "version": "1.1.3",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/drizzle-kit": {
++      "version": "0.31.4",
++      "devOptional": true,
++      "license": "MIT",
++      "dependencies": {
++        "@drizzle-team/brocli": "^0.10.2",
++        "@esbuild-kit/esm-loader": "^2.5.5",
++        "esbuild": "^0.25.4",
++        "esbuild-register": "^3.5.0"
++      },
++      "bin": {
++        "drizzle-kit": "bin.cjs"
++      }
++    },
++    "node_modules/drizzle-orm": {
++      "version": "0.45.4",
++      "license": "Apache-2.0",
++      "peerDependencies": {
++        "@aws-sdk/client-rds-data": ">=3",
++        "@cloudflare/workers-types": ">=4",
++        "@electric-sql/pglite": ">=0.2.0",
++        "@libsql/client": ">=0.10.0",
++        "@libsql/client-wasm": ">=0.10.0",
++        "@neondatabase/serverless": ">=0.10.0",
++        "@netlify/db": ">=0.4.0",
++        "@op-engineering/op-sqlite": ">=2",
++        "@opentelemetry/api": "^1.4.1",
++        "@planetscale/database": ">=1.13",
++        "@prisma/client": "*",
++        "@tidbcloud/serverless": "*",
++        "@types/better-sqlite3": "*",
++        "@types/pg": "*",
++        "@types/sql.js": "*",
++        "@upstash/redis": ">=1.34.7",
++        "@vercel/postgres": ">=0.8.0",
++        "@xata.io/client": "*",
++        "better-sqlite3": ">=7",
++        "bun-types": "*",
++        "expo-sqlite": ">=14.0.0",
++        "gel": ">=2",
++        "knex": "*",
++        "kysely": "*",
++        "mysql2": ">=2",
++        "pg": ">=8",
++        "postgres": ">=3",
++        "sql.js": ">=1",
++        "sqlite3": ">=5"
++      },
++      "peerDependenciesMeta": {
++        "@aws-sdk/client-rds-data": {
++          "optional": true
++        },
++        "@cloudflare/workers-types": {
++          "optional": true
++        },
++        "@electric-sql/pglite": {
++          "optional": true
++        },
++        "@libsql/client": {
++          "optional": true
++        },
++        "@libsql/client-wasm": {
++          "optional": true
++        },
++        "@neondatabase/serverless": {
++          "optional": true
++        },
++        "@netlify/db": {
++          "optional": true
++        },
++        "@op-engineering/op-sqlite": {
++          "optional": true
++        },
++        "@opentelemetry/api": {
++          "optional": true
++        },
++        "@planetscale/database": {
++          "optional": true
++        },
++        "@prisma/client": {
++          "optional": true
++        },
++        "@tidbcloud/serverless": {
++          "optional": true
++        },
++        "@types/better-sqlite3": {
++          "optional": true
++        },
++        "@types/pg": {
++          "optional": true
++        },
++        "@types/sql.js": {
++          "optional": true
++        },
++        "@upstash/redis": {
++          "optional": true
++        },
++        "@vercel/postgres": {
++          "optional": true
++        },
++        "@xata.io/client": {
++          "optional": true
++        },
++        "better-sqlite3": {
++          "optional": true
++        },
++        "bun-types": {
++          "optional": true
++        },
++        "expo-sqlite": {
++          "optional": true
++        },
++        "gel": {
++          "optional": true
++        },
++        "knex": {
++          "optional": true
++        },
++        "kysely": {
++          "optional": true
++        },
++        "mysql2": {
++          "optional": true
++        },
++        "pg": {
++          "optional": true
++        },
++        "postgres": {
++          "optional": true
++        },
++        "prisma": {
++          "optional": true
++        },
++        "sql.js": {
++          "optional": true
++        },
++        "sqlite3": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/electron-to-chromium": {
++      "version": "1.5.472",
++      "dev": true,
++      "license": "ISC"
++    },
++    "node_modules/es-errors": {
++      "version": "1.3.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/esbuild": {
++      "version": "0.25.12",
++      "devOptional": true,
++      "hasInstallScript": true,
++      "license": "MIT",
++      "bin": {
++        "esbuild": "bin/esbuild"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "optionalDependencies": {
++        "@esbuild/aix-ppc64": "0.25.12",
++        "@esbuild/android-arm": "0.25.12",
++        "@esbuild/android-arm64": "0.25.12",
++        "@esbuild/android-x64": "0.25.12",
++        "@esbuild/darwin-arm64": "0.25.12",
++        "@esbuild/darwin-x64": "0.25.12",
++        "@esbuild/freebsd-arm64": "0.25.12",
++        "@esbuild/freebsd-x64": "0.25.12",
++        "@esbuild/linux-arm": "0.25.12",
++        "@esbuild/linux-arm64": "0.25.12",
++        "@esbuild/linux-ia32": "0.25.12",
++        "@esbuild/linux-loong64": "0.25.12",
++        "@esbuild/linux-mips64el": "0.25.12",
++        "@esbuild/linux-ppc64": "0.25.12",
++        "@esbuild/linux-riscv64": "0.25.12",
++        "@esbuild/linux-s390x": "0.25.12",
++        "@esbuild/linux-x64": "0.25.12",
++        "@esbuild/netbsd-arm64": "0.25.12",
++        "@esbuild/netbsd-x64": "0.25.12",
++        "@esbuild/openbsd-arm64": "0.25.12",
++        "@esbuild/openbsd-x64": "0.25.12",
++        "@esbuild/openharmony-arm64": "0.25.12",
++        "@esbuild/sunos-x64": "0.25.12",
++        "@esbuild/win32-arm64": "0.25.12",
++        "@esbuild/win32-ia32": "0.25.12",
++        "@esbuild/win32-x64": "0.25.12"
++      }
++    },
++    "node_modules/esbuild-register": {
++      "version": "3.6.0",
++      "devOptional": true,
++      "license": "MIT",
++      "dependencies": {
++        "debug": "^4.3.4"
++      },
++      "peerDependencies": {
++        "esbuild": ">=0.12 <1"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/aix-ppc64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.25.12.tgz",
++      "integrity": "sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "aix"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/android-arm": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.25.12.tgz",
++      "integrity": "sha512-VJ+sKvNA/GE7Ccacc9Cha7bpS8nyzVv0jdVgwNDaR4gDMC/2TTRc33Ip8qrNYUcpkOHUT5OZ0bUcNNVZQ9RLlg==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/android-arm64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.25.12.tgz",
++      "integrity": "sha512-6AAmLG7zwD1Z159jCKPvAxZd4y/VTO0VkprYy+3N2FtJ8+BQWFXU+OxARIwA46c5tdD9SsKGZ/1ocqBS/gAKHg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/android-x64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.25.12.tgz",
++      "integrity": "sha512-5jbb+2hhDHx5phYR2By8GTWEzn6I9UqR11Kwf22iKbNpYrsmRB18aX/9ivc5cabcUiAT/wM+YIZ6SG9QO6a8kg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/darwin-arm64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.12.tgz",
++      "integrity": "sha512-N3zl+lxHCifgIlcMUP5016ESkeQjLj/959RxxNYIthIg+CQHInujFuXeWbWMgnTo4cp5XVHqFPmpyu9J65C1Yg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/darwin-x64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.25.12.tgz",
++      "integrity": "sha512-HQ9ka4Kx21qHXwtlTUVbKJOAnmG1ipXhdWTmNXiPzPfWKpXqASVcWdnf2bnL73wgjNrFXAa3yYvBSd9pzfEIpA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/freebsd-arm64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.25.12.tgz",
++      "integrity": "sha512-gA0Bx759+7Jve03K1S0vkOu5Lg/85dou3EseOGUes8flVOGxbhDDh/iZaoek11Y8mtyKPGF3vP8XhnkDEAmzeg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/freebsd-x64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.25.12.tgz",
++      "integrity": "sha512-TGbO26Yw2xsHzxtbVFGEXBFH0FRAP7gtcPE7P5yP7wGy7cXK2oO7RyOhL5NLiqTlBh47XhmIUXuGciXEqYFfBQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/linux-arm": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.25.12.tgz",
++      "integrity": "sha512-lPDGyC1JPDou8kGcywY0YILzWlhhnRjdof3UlcoqYmS9El818LLfJJc3PXXgZHrHCAKs/Z2SeZtDJr5MrkxtOw==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/linux-arm64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.25.12.tgz",
++      "integrity": "sha512-8bwX7a8FghIgrupcxb4aUmYDLp8pX06rGh5HqDT7bB+8Rdells6mHvrFHHW2JAOPZUbnjUpKTLg6ECyzvas2AQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/linux-ia32": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.25.12.tgz",
++      "integrity": "sha512-0y9KrdVnbMM2/vG8KfU0byhUN+EFCny9+8g202gYqSSVMonbsCfLjUO+rCci7pM0WBEtz+oK/PIwHkzxkyharA==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/linux-loong64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.25.12.tgz",
++      "integrity": "sha512-h///Lr5a9rib/v1GGqXVGzjL4TMvVTv+s1DPoxQdz7l/AYv6LDSxdIwzxkrPW438oUXiDtwM10o9PmwS/6Z0Ng==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/linux-mips64el": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.25.12.tgz",
++      "integrity": "sha512-iyRrM1Pzy9GFMDLsXn1iHUm18nhKnNMWscjmp4+hpafcZjrr2WbT//d20xaGljXDBYHqRcl8HnxbX6uaA/eGVw==",
++      "cpu": [
++        "mips64el"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/linux-ppc64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.25.12.tgz",
++      "integrity": "sha512-9meM/lRXxMi5PSUqEXRCtVjEZBGwB7P/D4yT8UG/mwIdze2aV4Vo6U5gD3+RsoHXKkHCfSxZKzmDssVlRj1QQA==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/linux-riscv64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.25.12.tgz",
++      "integrity": "sha512-Zr7KR4hgKUpWAwb1f3o5ygT04MzqVrGEGXGLnj15YQDJErYu/BGg+wmFlIDOdJp0PmB0lLvxFIOXZgFRrdjR0w==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/linux-s390x": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.25.12.tgz",
++      "integrity": "sha512-MsKncOcgTNvdtiISc/jZs/Zf8d0cl/t3gYWX8J9ubBnVOwlk65UIEEvgBORTiljloIWnBzLs4qhzPkJcitIzIg==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/netbsd-arm64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.25.12.tgz",
++      "integrity": "sha512-xXwcTq4GhRM7J9A8Gv5boanHhRa/Q9KLVmcyXHCTaM4wKfIpWkdXiMog/KsnxzJ0A1+nD+zoecuzqPmCRyBGjg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/netbsd-x64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.25.12.tgz",
++      "integrity": "sha512-Ld5pTlzPy3YwGec4OuHh1aCVCRvOXdH8DgRjfDy/oumVovmuSzWfnSJg+VtakB9Cm0gxNO9BzWkj6mtO1FMXkQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/openbsd-arm64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.25.12.tgz",
++      "integrity": "sha512-fF96T6KsBo/pkQI950FARU9apGNTSlZGsv1jZBAlcLL1MLjLNIWPBkj5NlSz8aAzYKg+eNqknrUJ24QBybeR5A==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/openbsd-x64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.25.12.tgz",
++      "integrity": "sha512-MZyXUkZHjQxUvzK7rN8DJ3SRmrVrke8ZyRusHlP+kuwqTcfWLyqMOE3sScPPyeIXN/mDJIfGXvcMqCgYKekoQw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/openharmony-arm64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.25.12.tgz",
++      "integrity": "sha512-rm0YWsqUSRrjncSXGA7Zv78Nbnw4XL6/dzr20cyrQf7ZmRcsovpcRBdhD43Nuk3y7XIoW2OxMVvwuRvk9XdASg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openharmony"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/sunos-x64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.25.12.tgz",
++      "integrity": "sha512-3wGSCDyuTHQUzt0nV7bocDy72r2lI33QL3gkDNGkod22EsYl04sMf0qLb8luNKTOmgF/eDEDP5BFNwoBKH441w==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "sunos"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/win32-arm64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.25.12.tgz",
++      "integrity": "sha512-rMmLrur64A7+DKlnSuwqUdRKyd3UE7oPJZmnljqEptesKM8wx9J8gx5u0+9Pq0fQQW8vqeKebwNXdfOyP+8Bsg==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/win32-ia32": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.25.12.tgz",
++      "integrity": "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/esbuild/node_modules/@esbuild/win32-x64": {
++      "version": "0.25.12",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.12.tgz",
++      "integrity": "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/escalade": {
++      "version": "3.2.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=6"
++      }
++    },
++    "node_modules/fast-glob": {
++      "version": "3.3.3",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@nodelib/fs.stat": "^2.0.2",
++        "@nodelib/fs.walk": "^1.2.3",
++        "glob-parent": "^5.1.2",
++        "merge2": "^1.3.0",
++        "micromatch": "^4.0.8"
++      },
++      "engines": {
++        "node": ">=8.6.0"
++      }
++    },
++    "node_modules/fast-glob/node_modules/glob-parent": {
++      "version": "5.1.2",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "is-glob": "^4.0.1"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/fastq": {
++      "version": "1.20.3",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "reusify": "^1.0.4"
++      }
++    },
++    "node_modules/fill-range": {
++      "version": "7.1.1",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "to-regex-range": "^5.0.1"
++      },
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/fraction.js": {
++      "version": "4.3.7",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "*"
++      },
++      "funding": {
++        "type": "patreon",
++        "url": "https://github.com/sponsors/rawify"
++      }
++    },
++    "node_modules/function-bind": {
++      "version": "1.1.2",
++      "dev": true,
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/get-tsconfig": {
++      "version": "4.14.3",
++      "devOptional": true,
++      "license": "MIT",
++      "dependencies": {
++        "resolve-pkg-maps": "^1.0.0"
++      },
++      "funding": {
++        "url": "https://github.com/privatenumber/get-tsconfig?sponsor=1"
++      }
++    },
++    "node_modules/glob-parent": {
++      "version": "6.0.2",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "is-glob": "^4.0.3"
++      },
++      "engines": {
++        "node": ">=10.13.0"
++      }
++    },
++    "node_modules/graceful-fs": {
++      "version": "4.2.11",
++      "license": "ISC"
++    },
++    "node_modules/hasown": {
++      "version": "2.0.4",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "function-bind": "^1.1.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/is-binary-path": {
++      "version": "2.1.0",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "binary-extensions": "^2.0.0"
++      },
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/is-core-module": {
++      "version": "2.17.0",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hasown": "^2.0.4"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/is-extglob": {
++      "version": "2.1.1",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/is-glob": {
++      "version": "4.0.3",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "is-extglob": "^2.1.1"
++      },
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/is-number": {
++      "version": "7.0.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.12.0"
++      }
++    },
++    "node_modules/jiti": {
++      "version": "1.21.7",
++      "dev": true,
++      "license": "MIT",
++      "bin": {
++        "jiti": "bin/jiti.js"
++      }
++    },
++    "node_modules/jose": {
++      "version": "6.2.14",
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/panva"
++      }
++    },
++    "node_modules/js-tokens": {
++      "version": "4.0.0",
++      "license": "MIT"
++    },
++    "node_modules/kysely": {
++      "version": "0.29.7",
++      "license": "MIT",
++      "engines": {
++        "node": ">=22.0.0"
++      }
++    },
++    "node_modules/lilconfig": {
++      "version": "3.1.4",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=14"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/antonk52"
++      }
++    },
++    "node_modules/lines-and-columns": {
++      "version": "1.2.4",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/loose-envify": {
++      "version": "1.4.0",
++      "license": "MIT",
++      "dependencies": {
++        "js-tokens": "^3.0.0 || ^4.0.0"
++      },
++      "bin": {
++        "loose-envify": "cli.js"
++      }
++    },
++    "node_modules/merge2": {
++      "version": "1.4.1",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 8"
++      }
++    },
++    "node_modules/micromatch": {
++      "version": "4.0.8",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "braces": "^3.0.3",
++        "picomatch": "^2.3.1"
++      },
++      "engines": {
++        "node": ">=8.6"
++      }
++    },
++    "node_modules/ms": {
++      "version": "2.1.3",
++      "devOptional": true,
++      "license": "MIT"
++    },
++    "node_modules/mz": {
++      "version": "2.7.0",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "any-promise": "^1.0.0",
++        "object-assign": "^4.0.1",
++        "thenify-all": "^1.0.0"
++      }
++    },
++    "node_modules/nanoid": {
++      "version": "3.3.20",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "bin": {
++        "nanoid": "bin/nanoid.cjs"
++      },
++      "engines": {
++        "node": "^10 || ^12 || ^13.7 || ^14 || >=15.0.1"
++      }
++    },
++    "node_modules/nanostores": {
++      "version": "1.5.5",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": "^20.0.0 || >=22.0.0"
++      }
++    },
++    "node_modules/next": {
++      "version": "14.2.35",
++      "license": "MIT",
++      "dependencies": {
++        "@next/env": "14.2.35",
++        "@swc/helpers": "0.5.5",
++        "busboy": "1.6.0",
++        "caniuse-lite": "^1.0.30001579",
++        "graceful-fs": "^4.2.11",
++        "postcss": "8.4.31",
++        "styled-jsx": "5.1.1"
++      },
++      "bin": {
++        "next": "dist/bin/next"
++      },
++      "engines": {
++        "node": ">=18.17.0"
++      },
++      "optionalDependencies": {
++        "@next/swc-darwin-arm64": "14.2.33",
++        "@next/swc-darwin-x64": "14.2.33",
++        "@next/swc-linux-arm64-gnu": "14.2.33",
++        "@next/swc-linux-arm64-musl": "14.2.33",
++        "@next/swc-linux-x64-gnu": "14.2.33",
++        "@next/swc-linux-x64-musl": "14.2.33",
++        "@next/swc-win32-arm64-msvc": "14.2.33",
++        "@next/swc-win32-ia32-msvc": "14.2.33",
++        "@next/swc-win32-x64-msvc": "14.2.33"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": "^1.1.0",
++        "@playwright/test": "^1.41.2",
++        "react": "^18.2.0",
++        "react-dom": "^18.2.0",
++        "sass": "^1.3.0"
++      },
++      "peerDependenciesMeta": {
++        "@opentelemetry/api": {
++          "optional": true
++        },
++        "@playwright/test": {
++          "optional": true
++        },
++        "sass": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/next/node_modules/@next/swc-darwin-arm64": {
++      "version": "14.2.33",
++      "resolved": "https://registry.npmjs.org/@next/swc-darwin-arm64/-/swc-darwin-arm64-14.2.33.tgz",
++      "integrity": "sha512-HqYnb6pxlsshoSTubdXKu15g3iivcbsMXg4bYpjL2iS/V6aQot+iyF4BUc2qA/J/n55YtvE4PHMKWBKGCF/+wA==",
++      "cpu": [
++        "arm64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/next/node_modules/@next/swc-darwin-x64": {
++      "version": "14.2.33",
++      "resolved": "https://registry.npmjs.org/@next/swc-darwin-x64/-/swc-darwin-x64-14.2.33.tgz",
++      "integrity": "sha512-8HGBeAE5rX3jzKvF593XTTFg3gxeU4f+UWnswa6JPhzaR6+zblO5+fjltJWIZc4aUalqTclvN2QtTC37LxvZAA==",
++      "cpu": [
++        "x64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/next/node_modules/@next/swc-linux-arm64-gnu": {
++      "version": "14.2.33",
++      "resolved": "https://registry.npmjs.org/@next/swc-linux-arm64-gnu/-/swc-linux-arm64-gnu-14.2.33.tgz",
++      "integrity": "sha512-JXMBka6lNNmqbkvcTtaX8Gu5by9547bukHQvPoLe9VRBx1gHwzf5tdt4AaezW85HAB3pikcvyqBToRTDA4DeLw==",
++      "cpu": [
++        "arm64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/next/node_modules/@next/swc-linux-arm64-musl": {
++      "version": "14.2.33",
++      "resolved": "https://registry.npmjs.org/@next/swc-linux-arm64-musl/-/swc-linux-arm64-musl-14.2.33.tgz",
++      "integrity": "sha512-Bm+QulsAItD/x6Ih8wGIMfRJy4G73tu1HJsrccPW6AfqdZd0Sfm5Imhgkgq2+kly065rYMnCOxTBvmvFY1BKfg==",
++      "cpu": [
++        "arm64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/next/node_modules/@next/swc-linux-x64-musl": {
++      "version": "14.2.33",
++      "resolved": "https://registry.npmjs.org/@next/swc-linux-x64-musl/-/swc-linux-x64-musl-14.2.33.tgz",
++      "integrity": "sha512-345tsIWMzoXaQndUTDv1qypDRiebFxGYx9pYkhwY4hBRaOLt8UGfiWKr9FSSHs25dFIf8ZqIFaPdy5MljdoawA==",
++      "cpu": [
++        "x64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/next/node_modules/@next/swc-win32-arm64-msvc": {
++      "version": "14.2.33",
++      "resolved": "https://registry.npmjs.org/@next/swc-win32-arm64-msvc/-/swc-win32-arm64-msvc-14.2.33.tgz",
++      "integrity": "sha512-nscpt0G6UCTkrT2ppnJnFsYbPDQwmum4GNXYTeoTIdsmMydSKFz9Iny2jpaRupTb+Wl298+Rh82WKzt9LCcqSQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/next/node_modules/@next/swc-win32-ia32-msvc": {
++      "version": "14.2.33",
++      "resolved": "https://registry.npmjs.org/@next/swc-win32-ia32-msvc/-/swc-win32-ia32-msvc-14.2.33.tgz",
++      "integrity": "sha512-pc9LpGNKhJ0dXQhZ5QMmYxtARwwmWLpeocFmVG5Z0DzWq5Uf0izcI8tLc+qOpqxO1PWqZ5A7J1blrUIKrIFc7Q==",
++      "cpu": [
++        "ia32"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/next/node_modules/@next/swc-win32-x64-msvc": {
++      "version": "14.2.33",
++      "resolved": "https://registry.npmjs.org/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-14.2.33.tgz",
++      "integrity": "sha512-nOjfZMy8B94MdisuzZo9/57xuFVLHJaDj5e/xrduJp9CV2/HrfxTRH2fbyLe+K9QT41WBLUd4iXX3R7jBp0EUg==",
++      "cpu": [
++        "x64"
++      ],
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">= 10"
++      }
++    },
++    "node_modules/next/node_modules/postcss": {
++      "version": "8.4.31",
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/postcss/"
++        },
++        {
++          "type": "tidelift",
++          "url": "https://tidelift.com/funding/github/npm/postcss"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "nanoid": "^3.3.6",
++        "picocolors": "^1.0.0",
++        "source-map-js": "^1.0.2"
++      },
++      "engines": {
++        "node": "^10 || ^12 || >=14"
++      }
++    },
++    "node_modules/node-releases": {
++      "version": "2.0.63",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/normalize-path": {
++      "version": "3.0.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/normalize-range": {
++      "version": "0.1.2",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/object-assign": {
++      "version": "4.1.1",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/object-hash": {
++      "version": "3.0.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/path-parse": {
++      "version": "1.0.7",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/picocolors": {
++      "version": "1.1.1",
++      "license": "ISC"
++    },
++    "node_modules/picomatch": {
++      "version": "2.3.2",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=8.6"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/jonschlinkert"
++      }
++    },
++    "node_modules/pirates": {
++      "version": "4.0.7",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/postcss": {
++      "version": "8.4.49",
++      "dev": true,
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/postcss/"
++        },
++        {
++          "type": "tidelift",
++          "url": "https://tidelift.com/funding/github/npm/postcss"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "nanoid": "^3.3.7",
++        "picocolors": "^1.1.1",
++        "source-map-js": "^1.2.1"
++      },
++      "engines": {
++        "node": "^10 || ^12 || >=14"
++      }
++    },
++    "node_modules/postcss-import": {
++      "version": "15.1.0",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "postcss-value-parser": "^4.0.0",
++        "read-cache": "^1.0.0",
++        "resolve": "^1.1.7"
++      },
++      "engines": {
++        "node": ">=14.0.0"
++      },
++      "peerDependencies": {
++        "postcss": "^8.0.0"
++      }
++    },
++    "node_modules/postcss-js": {
++      "version": "4.1.0",
++      "dev": true,
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/postcss/"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "camelcase-css": "^2.0.1"
++      },
++      "engines": {
++        "node": "^12 || ^14 || >= 16"
++      },
++      "peerDependencies": {
++        "postcss": "^8.4.21"
++      }
++    },
++    "node_modules/postcss-nested": {
++      "version": "6.2.0",
++      "dev": true,
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/postcss/"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "postcss-selector-parser": "^6.1.1"
++      },
++      "engines": {
++        "node": ">=12.0"
++      },
++      "peerDependencies": {
++        "postcss": "^8.2.14"
++      }
++    },
++    "node_modules/postcss-selector-parser": {
++      "version": "6.1.5",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "cssesc": "^3.0.0",
++        "util-deprecate": "^1.0.2"
++      },
++      "engines": {
++        "node": ">=4"
++      }
++    },
++    "node_modules/postcss-value-parser": {
++      "version": "4.2.0",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/queue-microtask": {
++      "version": "1.2.3",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT"
++    },
++    "node_modules/react": {
++      "version": "18.3.1",
++      "license": "MIT",
++      "dependencies": {
++        "loose-envify": "^1.1.0"
++      },
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/react-dom": {
++      "version": "18.3.1",
++      "license": "MIT",
++      "dependencies": {
++        "loose-envify": "^1.1.0",
++        "scheduler": "^0.23.2"
++      },
++      "peerDependencies": {
++        "react": "^18.3.1"
++      }
++    },
++    "node_modules/read-cache": {
++      "version": "1.0.2",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/readdirp": {
++      "version": "3.6.0",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "picomatch": "^2.2.1"
++      },
++      "engines": {
++        "node": ">=8.10.0"
++      }
++    },
++    "node_modules/resolve": {
++      "version": "1.22.13",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0",
++        "is-core-module": "^2.17.0",
++        "path-parse": "^1.0.7",
++        "supports-preserve-symlinks-flag": "^1.0.0"
++      },
++      "bin": {
++        "resolve": "bin/resolve"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/resolve-pkg-maps": {
++      "version": "1.0.0",
++      "devOptional": true,
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/privatenumber/resolve-pkg-maps?sponsor=1"
++      }
++    },
++    "node_modules/reusify": {
++      "version": "1.1.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "iojs": ">=1.0.0",
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/rou3": {
++      "version": "0.9.2",
++      "license": "MIT"
++    },
++    "node_modules/run-parallel": {
++      "version": "1.2.0",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "queue-microtask": "^1.2.2"
++      }
++    },
++    "node_modules/scheduler": {
++      "version": "0.23.2",
++      "license": "MIT",
++      "dependencies": {
++        "loose-envify": "^1.1.0"
++      }
++    },
++    "node_modules/set-cookie-parser": {
++      "version": "3.2.2",
++      "license": "MIT"
++    },
++    "node_modules/source-map": {
++      "version": "0.6.1",
++      "devOptional": true,
++      "license": "BSD-3-Clause",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/source-map-js": {
++      "version": "1.2.2",
++      "license": "BSD-3-Clause",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/source-map-support": {
++      "version": "0.5.21",
++      "devOptional": true,
++      "license": "MIT",
++      "dependencies": {
++        "buffer-from": "^1.0.0",
++        "source-map": "^0.6.0"
++      }
++    },
++    "node_modules/streamsearch": {
++      "version": "1.1.0",
++      "engines": {
++        "node": ">=10.0.0"
++      }
++    },
++    "node_modules/styled-jsx": {
++      "version": "5.1.1",
++      "license": "MIT",
++      "dependencies": {
++        "client-only": "0.0.1"
++      },
++      "engines": {
++        "node": ">= 12.0.0"
++      },
++      "peerDependencies": {
++        "react": ">= 16.8.0 || 17.x.x || ^18.0.0-0"
++      },
++      "peerDependenciesMeta": {
++        "@babel/core": {
++          "optional": true
++        },
++        "babel-plugin-macros": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/sucrase": {
++      "version": "3.35.1",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@jridgewell/gen-mapping": "^0.3.2",
++        "commander": "^4.0.0",
++        "lines-and-columns": "^1.1.6",
++        "mz": "^2.7.0",
++        "pirates": "^4.0.1",
++        "tinyglobby": "^0.2.11",
++        "ts-interface-checker": "^0.1.9"
++      },
++      "bin": {
++        "sucrase": "bin/sucrase",
++        "sucrase-node": "bin/sucrase-node"
++      },
++      "engines": {
++        "node": ">=16 || 14 >=14.17"
++      }
++    },
++    "node_modules/supports-preserve-symlinks-flag": {
++      "version": "1.0.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/tailwindcss": {
++      "version": "3.4.17",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@alloc/quick-lru": "^5.2.0",
++        "arg": "^5.0.2",
++        "chokidar": "^3.6.0",
++        "didyoumean": "^1.2.2",
++        "dlv": "^1.1.3",
++        "fast-glob": "^3.3.2",
++        "glob-parent": "^6.0.2",
++        "is-glob": "^4.0.3",
++        "jiti": "^1.21.6",
++        "lilconfig": "^3.1.3",
++        "micromatch": "^4.0.8",
++        "normalize-path": "^3.0.0",
++        "object-hash": "^3.0.0",
++        "picocolors": "^1.1.1",
++        "postcss": "^8.4.47",
++        "postcss-import": "^15.1.0",
++        "postcss-js": "^4.0.1",
++        "postcss-load-config": "^4.0.2",
++        "postcss-nested": "^6.2.0",
++        "postcss-selector-parser": "^6.1.2",
++        "resolve": "^1.22.8",
++        "sucrase": "^3.35.0"
++      },
++      "bin": {
++        "tailwind": "lib/cli.js",
++        "tailwindcss": "lib/cli.js"
++      },
++      "engines": {
++        "node": ">=14.0.0"
++      }
++    },
++    "node_modules/tailwindcss/node_modules/postcss-load-config": {
++      "version": "4.0.2",
++      "dev": true,
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/postcss/"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "lilconfig": "^3.0.0",
++        "yaml": "^2.3.4"
++      },
++      "engines": {
++        "node": ">= 14"
++      },
++      "peerDependencies": {
++        "postcss": ">=8.0.9",
++        "ts-node": ">=9.0.0"
++      },
++      "peerDependenciesMeta": {
++        "postcss": {
++          "optional": true
++        },
++        "ts-node": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/thenify": {
++      "version": "3.3.1",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "any-promise": "^1.0.0"
++      }
++    },
++    "node_modules/thenify-all": {
++      "version": "1.6.0",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "thenify": ">= 3.1.0 < 4"
++      },
++      "engines": {
++        "node": ">=0.8"
++      }
++    },
++    "node_modules/tinyglobby": {
++      "version": "0.2.17",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "fdir": "^6.5.0",
++        "picomatch": "^4.0.4"
++      },
++      "engines": {
++        "node": ">=12.0.0"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/SuperchupuDev"
++      }
++    },
++    "node_modules/tinyglobby/node_modules/fdir": {
++      "version": "6.5.0",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12.0.0"
++      },
++      "peerDependencies": {
++        "picomatch": "^3 || ^4"
++      },
++      "peerDependenciesMeta": {
++        "picomatch": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/tinyglobby/node_modules/picomatch": {
++      "version": "4.0.7",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/jonschlinkert"
++      }
++    },
++    "node_modules/to-regex-range": {
++      "version": "5.0.1",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "is-number": "^7.0.0"
++      },
++      "engines": {
++        "node": ">=8.0"
++      }
++    },
++    "node_modules/ts-interface-checker": {
++      "version": "0.1.13",
++      "dev": true,
++      "license": "Apache-2.0"
++    },
++    "node_modules/tslib": {
++      "version": "2.9.1",
++      "license": "0BSD"
++    },
++    "node_modules/tsx": {
++      "version": "4.23.15",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "esbuild": "~0.28.0"
++      },
++      "bin": {
++        "tsx": "dist/cli.mjs"
++      },
++      "engines": {
++        "node": ">=18.0.0"
++      },
++      "optionalDependencies": {
++        "fsevents": "~2.3.3"
++      }
++    },
++    "node_modules/tsx/node_modules/@esbuild/linux-x64": {
++      "version": "0.28.2",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild": {
++      "version": "0.28.2",
++      "dev": true,
++      "hasInstallScript": true,
++      "license": "MIT",
++      "bin": {
++        "esbuild": "bin/esbuild"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "optionalDependencies": {
++        "@esbuild/aix-ppc64": "0.28.2",
++        "@esbuild/android-arm": "0.28.2",
++        "@esbuild/android-arm64": "0.28.2",
++        "@esbuild/android-x64": "0.28.2",
++        "@esbuild/darwin-arm64": "0.28.2",
++        "@esbuild/darwin-x64": "0.28.2",
++        "@esbuild/freebsd-arm64": "0.28.2",
++        "@esbuild/freebsd-x64": "0.28.2",
++        "@esbuild/linux-arm": "0.28.2",
++        "@esbuild/linux-arm64": "0.28.2",
++        "@esbuild/linux-ia32": "0.28.2",
++        "@esbuild/linux-loong64": "0.28.2",
++        "@esbuild/linux-mips64el": "0.28.2",
++        "@esbuild/linux-ppc64": "0.28.2",
++        "@esbuild/linux-riscv64": "0.28.2",
++        "@esbuild/linux-s390x": "0.28.2",
++        "@esbuild/linux-x64": "0.28.2",
++        "@esbuild/netbsd-arm64": "0.28.2",
++        "@esbuild/netbsd-x64": "0.28.2",
++        "@esbuild/openbsd-arm64": "0.28.2",
++        "@esbuild/openbsd-x64": "0.28.2",
++        "@esbuild/openharmony-arm64": "0.28.2",
++        "@esbuild/sunos-x64": "0.28.2",
++        "@esbuild/win32-arm64": "0.28.2",
++        "@esbuild/win32-ia32": "0.28.2",
++        "@esbuild/win32-x64": "0.28.2"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/aix-ppc64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.28.2.tgz",
++      "integrity": "sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "aix"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/android-arm": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.28.2.tgz",
++      "integrity": "sha512-kXXoiPVVGQcnIYGOeaovwOURpniDBpSq4A03qkQ+BMQqtGG6HYap3xne9C1O1yo4TR3qxlCX5IqqmX6fFo2Lqg==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/android-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.28.2.tgz",
++      "integrity": "sha512-5YfKeeI8qWfBZIX+u2xZC3Zlb3Os/gLS2sbEKM+I4ZOcsWmHS2WLysCcQZDAFRslDUU5Oiq44gf6PYN1vGwG5A==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/android-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.28.2.tgz",
++      "integrity": "sha512-O387ite7SzUyCcy3JQX4P4bLtEA7bLLkx+esve5JHnyYfNTxcVpXZo9jhdB0lTKN44gztELTdU7nS8Nr16Fs1Q==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/darwin-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.28.2.tgz",
++      "integrity": "sha512-n4KqkOQrraxHJcgjM1RvwbigfQKIKJVpM7xp+KsxiyUSrRdIXnt73VhrPAx0fV44hgfmIVKjxMN9J1t5jySVkw==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/darwin-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.28.2.tgz",
++      "integrity": "sha512-uq6suIWYP37qzGddBKPw5QEQPi6HiLGsO7UmkpfyaYNQ3D+rN6w6WfwH+nuqcGXWvawGwxOEroO4YGnFh95azw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/freebsd-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.28.2.tgz",
++      "integrity": "sha512-n+I0BTSRIoy+d6RPKnEVwql5UwBJolytvY4mAOIEJorKlqgPII8ix6slVVrfZ5Tnj7glIZvloylbB/EJPMWEXw==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/freebsd-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.28.2.tgz",
++      "integrity": "sha512-78XJTJkvPs0kz2w61301PJjXl4g7q3JqiYMZ/M/yVI73EHBrCRTgkhu9oqG7vPqq+a/yadEW8aD+agKlk5xrmg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/linux-arm": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.28.2.tgz",
++      "integrity": "sha512-XlDnu2q5yoqems+xay6wSAcg9DDD7K9RLKZEBOMZm3ckNpJBvOX20tSfby8KfrrhINDyv9V2YVZKY/SpoGJI8w==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/linux-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.28.2.tgz",
++      "integrity": "sha512-pW4AC0P3it8c7do9MVM4p51FzHzdM/TZrerurgRcHJ2WTa1VQ1CIq18xncfpBJw4ojkiZZrKW2yIBWBP92j6Ug==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/linux-ia32": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.28.2.tgz",
++      "integrity": "sha512-CYbnj78HsIeA+DhgUKgFCfvNsTHFhMMrinUrMZpDXJXKN8T3XViTZ/+wtHeVxEWY8ewSzTFN+nRmSwO2tZaLUQ==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/linux-loong64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.28.2.tgz",
++      "integrity": "sha512-buwkd8nsph4R+ajRvw0qM5Hja/TXQow3ptzWO2EbG/cqcIkHloRrdlBtQlshyYGTNFvfkfJ5tpPLVkY4DtsPfQ==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/linux-mips64el": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.28.2.tgz",
++      "integrity": "sha512-ZVykbDyk7519VwiNb9Lcj9m8XM6v5V9uKPvrEMkkEedVewf+0itkhahp4HDpgERXhwLRpWFypsGbG/J8s0QjJA==",
++      "cpu": [
++        "mips64el"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/linux-ppc64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.28.2.tgz",
++      "integrity": "sha512-CAXl+Dtd9UUuJd8pKKdwh6MLm3MUMiqMPmhZ3tTSXPqfyQ3vDl6R5hZdZ/kYojK4ofXtdfSv1tFq8XzWx3heNQ==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/linux-riscv64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.28.2.tgz",
++      "integrity": "sha512-GeXCej4IQtU1B+QlDV8W/RRvbzI3O/Stss+/bCXv4lZls5WGRtu2a+3JkA3i4qIUlMXpcHebWpF8AkJhATowuA==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/linux-s390x": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.28.2.tgz",
++      "integrity": "sha512-3H1weTYZPxt/WOhByszQZybS9w5lKzUn1FDMsgEChbHWQwHYQQRfBxgCcZvPhjHfKyJjIievvMmEUawJrdY9Dg==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/netbsd-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.28.2.tgz",
++      "integrity": "sha512-sSATRjPeDBg3pdgHoQfoYBob11Kk1FGa9lui5RIHZCoCkJa9QKlvl3/vKz2usCmYYjs7ymJR/2Nnsqe+Hjt5nw==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/netbsd-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.28.2.tgz",
++      "integrity": "sha512-lqnzCV+mM0gIADaKihiCg6ifgfU2L3h5E33rNQBN1Y4MaVGnzryzmvvf7UHxprpQdE8hpqLolJ9Rl+SkIRDpyw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/openbsd-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.28.2.tgz",
++      "integrity": "sha512-AL2qJILH7lNjrDmCQDvdxMfAUIv8KMNZOvrwAQ8i8//ntL9FflhOyMJ8OZSMBb8/AWXe3/5v5S20y3zCoZWKoQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/openbsd-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.28.2.tgz",
++      "integrity": "sha512-QtiuPytchRyC4rwUKhexJdQKvDuZ6hWloi3igqPQNUJCS1/v9EiO3UTOXR6A3FoMo4fnAKbWJdqaIwhOzh8qEw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/openharmony-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.28.2.tgz",
++      "integrity": "sha512-WkhYDmpTjLvGlScA1rwjRUmhl4k8oXR3cIbtqWmELgU/dFeHHlEllxDvdWcNJV9rbzCexB5vz8gtNewWLgCT7Q==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openharmony"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/sunos-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.28.2.tgz",
++      "integrity": "sha512-GPMSkTOtMnv2U2F8gxe4Io6qmVs+YKyp832Etqqxr0hFngmXQ3rzwytelm3GIn7T4VviRUlf3sOgBOiTdvaf7g==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "sunos"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/win32-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.28.2.tgz",
++      "integrity": "sha512-PIhhEkE9uPBleRBrQEJpUn7MBnibZzbGzYWPmY3x+YoVg/95zbjB4CxPPOQ8l5tYYM4mMaCthF8/1DIfBQQyWQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/win32-ia32": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.28.2.tgz",
++      "integrity": "sha512-YmJbfTlvU7Sdn9BB+4PRES4oB6pxgS37MAONj+hBr/cpXS1aBPKXxNnDbu+QCWPj0o9dgyxeq79g6c5P8KeuYA==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/esbuild/node_modules/@esbuild/win32-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.28.2.tgz",
++      "integrity": "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/tsx/node_modules/fsevents": {
++      "version": "2.3.3",
++      "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
++      "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
++      "dev": true,
++      "hasInstallScript": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
++      }
++    },
++    "node_modules/typescript": {
++      "version": "5.6.3",
++      "dev": true,
++      "license": "Apache-2.0",
++      "bin": {
++        "tsc": "bin/tsc",
++        "tsserver": "bin/tsserver"
++      },
++      "engines": {
++        "node": ">=14.17"
++      }
++    },
++    "node_modules/undici-types": {
++      "version": "6.21.0",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/update-browserslist-db": {
++      "version": "1.3.4",
++      "dev": true,
++      "funding": [
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/browserslist"
++        },
++        {
++          "type": "tidelift",
++          "url": "https://tidelift.com/funding/github/npm/browserslist"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "escalade": "^3.2.0",
++        "picocolors": "^1.1.1"
++      },
++      "bin": {
++        "update-browserslist-db": "cli.js"
++      },
++      "peerDependencies": {
++        "browserslist": ">= 4.21.0"
++      }
++    },
++    "node_modules/util-deprecate": {
++      "version": "1.0.2",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/yaml": {
++      "version": "2.9.1",
++      "dev": true,
++      "license": "ISC",
++      "bin": {
++        "yaml": "bin.mjs"
++      },
++      "engines": {
++        "node": ">= 14.6"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/eemeli"
++      }
++    },
++    "node_modules/zod": {
++      "version": "4.6.7",
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/colinhacks"
++      }
++    }
++  }
++}
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..a900c17
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,38 @@
++{
++  "name": "refqah-al-arbaeen",
++  "version": "1.0.0",
++  "private": true,
++  "description": "رِفقة الأربعين — رحلة علمٍ وحفظٍ وعمل (منصة متابعة دورة الأربعين Nukawية)",
++  "scripts": {
++    "dev": "next dev -H 0.0.0.0 -p 3000",
++    "build": "next build",
++    "start": "next start -H 0.0.0.0 -p 3000",
++    "lint": "next lint",
++    "db:generate": "drizzle-kit generate",
++    "db:migrate": "drizzle-kit migrate",
++    "db:push": "drizzle-kit push",
++    "seed": "tsx scripts/seed.ts"
++  },
++  "dependencies": {
++    "@electric-sql/pglite": "0.5.14",
++    "@fontsource/amiri": "5.3.0",
++    "@fontsource/tajawal": "5.3.0",
++    "@neondatabase/serverless": "1.2.0",
++    "better-auth": "1.7.14",
++    "drizzle-orm": "0.45.4",
++    "next": "14.2.35",
++    "react": "18.3.1",
++    "react-dom": "18.3.1"
++  },
++  "devDependencies": {
++    "@types/node": "22.x",
++    "@types/react": "18.x",
++    "@types/react-dom": "18.x",
++    "autoprefixer": "10.4.20",
++    "drizzle-kit": "0.31.4",
++    "postcss": "8.4.49",
++    "tailwindcss": "3.4.17",
++    "tsx": "4.23.15",
++    "typescript": "5.6.3"
++  }
++}
+diff --git a/postcss.config.mjs b/postcss.config.mjs
+new file mode 100644
+index 0000000..2ef30fc
+--- /dev/null
++++ b/postcss.config.mjs
+@@ -0,0 +1,9 @@
++/** @type {import('postcss-load-config').Config} */
++const config = {
++  plugins: {
++    tailwindcss: {},
++    autoprefixer: {},
++  },
++};
++
++export default config;
+diff --git a/src/lib/auth-client.ts b/src/lib/auth-client.ts
+new file mode 100644
+index 0000000..d0bad77
+--- /dev/null
++++ b/src/lib/auth-client.ts
+@@ -0,0 +1,12 @@
++"use client";
++
++import { createAuthClient } from "better-auth/react";
++import { usernameClient, inferAdditionalFields } from "better-auth/client/plugins";
++import type { auth } from "@/lib/auth";
++
++export const authClient = createAuthClient({
++  baseURL: process.env.NEXT_PUBLIC_APP_URL || undefined,
++  plugins: [usernameClient(), inferAdditionalFields<typeof auth>()],
++});
++
++export type AuthClient = typeof authClient;
+diff --git a/src/lib/auth.ts b/src/lib/auth.ts
+new file mode 100644
+index 0000000..d3b3edc
+--- /dev/null
++++ b/src/lib/auth.ts
+@@ -0,0 +1,57 @@
++import { betterAuth } from "better-auth";
++import { drizzleAdapter } from "better-auth/adapters/drizzle";
++import { username } from "better-auth/plugins";
++import { db, schema } from "@/lib/db";
++
++/**
++ * Better Auth configuration.
++ * - Email + password sign-in
++ * - Username sign-in (via the username plugin) — students may use either
++ * - Role stored as an additional field on `user` ("admin" | "student")
++ */
++export const auth = betterAuth({
++  appName: "رِفقة الأربعين",
++  database: drizzleAdapter(db, {
++    provider: "pg",
++    schema: {
++      user: schema.user,
++      session: schema.session,
++      account: schema.account,
++      verification: schema.verification,
++    },
++  }),
++  baseURL: process.env.BETTER_AUTH_URL || undefined,
++  secret: process.env.BETTER_AUTH_SECRET || "refqah-dev-secret-change-in-production",
++  emailAndPassword: {
++    enabled: true,
++    autoSignIn: true,
++  },
++  session: {
++    expiresIn: 60 * 60 * 24 * 30, // 30 days
++    updateAge: 60 * 60 * 24,
++    cookieCache: { enabled: false },
++  },
++  user: {
++    additionalFields: {
++      role: {
++        type: "string",
++        required: false,
++        defaultValue: "student",
++        input: false, // never settable from the client
++      },
++    },
++  },
++  plugins: [
++    username({
++      minUsernameLength: 3,
++      maxUsernameLength: 30,
++      usernameNormalizer: (u) => u.trim().toLowerCase(),
++    }),
++  ],
++  trustedOrigins: [
++    process.env.NEXT_PUBLIC_APP_URL,
++    process.env.BETTER_AUTH_URL,
++  ].filter((o): o is string => Boolean(o)),
++});
++
++export type Session = typeof auth.$Infer.Session;
+diff --git a/src/lib/db/index.ts b/src/lib/db/index.ts
+new file mode 100644
+index 0000000..f99200e
+--- /dev/null
++++ b/src/lib/db/index.ts
+@@ -0,0 +1,32 @@
++import { PGlite } from "@electric-sql/pglite";
++import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
++import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
++import { Pool } from "@neondatabase/serverless";
++import * as schema from "./schema";
++
++export { schema };
++export * from "./schema";
++
++/**
++ * Database client.
++ *
++ * - If DATABASE_URL is set → Neon PostgreSQL (serverless driver, works on Vercel).
++ * - Otherwise → embedded PGlite (real Postgres engine in WASM) stored under
++ *   PGLITE_DIR for local development, so the exact same Drizzle/Postgres code
++ *   runs locally without any external service.
++ */
++function createDb() {
++  if (process.env.DATABASE_URL) {
++    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
++    return drizzleNeon(pool, { schema });
++  }
++  const dir = process.env.PGLITE_DIR ?? "./.data/pglite";
++  const client = new PGlite(dir);
++  return drizzlePglite(client, { schema });
++}
++
++const globalForDb = globalThis as unknown as { __refqahDb?: ReturnType<typeof createDb> };
++
++export const db = (globalForDb.__refqahDb ??= createDb());
++
++export type Db = typeof db;
+diff --git a/src/lib/db/schema.ts b/src/lib/db/schema.ts
+new file mode 100644
+index 0000000..6cbd0a6
+--- /dev/null
++++ b/src/lib/db/schema.ts
+@@ -0,0 +1,178 @@
++import {
++  pgTable,
++  text,
++  integer,
++  boolean,
++  timestamp,
++  uniqueIndex,
++  index,
++} from "drizzle-orm/pg-core";
++
++/* ────────────────────────────────
++ * Better Auth tables
++ * ──────────────────────────────── */
++
++export const user = pgTable("user", {
++  id: text("id").primaryKey(),
++  name: text("name").notNull(),
++  email: text("email").notNull().unique(),
++  emailVerified: boolean("email_verified").notNull().default(false),
++  image: text("image"),
++  // username plugin fields
++  username: text("username").unique(),
++  displayUsername: text("display_username"),
++  // app role: "admin" (المعلمة) | "student" (الطالبة)
++  role: text("role").notNull().default("student"),
++  createdAt: timestamp("created_at").notNull().defaultNow(),
++  updatedAt: timestamp("updated_at").notNull().defaultNow(),
++});
++
++export const session = pgTable("session", {
++  id: text("id").primaryKey(),
++  expiresAt: timestamp("expires_at").notNull(),
++  token: text("token").notNull().unique(),
++  createdAt: timestamp("created_at").notNull().defaultNow(),
++  updatedAt: timestamp("updated_at").notNull().defaultNow(),
++  ipAddress: text("ip_address"),
++  userAgent: text("user_agent"),
++  userId: text("user_id")
++    .notNull()
++    .references(() => user.id, { onDelete: "cascade" }),
++});
++
++export const account = pgTable("account", {
++  id: text("id").primaryKey(),
++  accountId: text("account_id").notNull(),
++  providerId: text("provider_id").notNull(),
++  userId: text("user_id")
++    .notNull()
++    .references(() => user.id, { onDelete: "cascade" }),
++  accessToken: text("access_token"),
++  refreshToken: text("refresh_token"),
++  idToken: text("id_token"),
++  accessTokenExpiresAt: timestamp("access_token_expires_at"),
++  refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
++  scope: text("scope"),
++  password: text("password"),
++  createdAt: timestamp("created_at").notNull().defaultNow(),
++  updatedAt: timestamp("updated_at").notNull().defaultNow(),
++});
++
++export const verification = pgTable("verification", {
++  id: text("id").primaryKey(),
++  identifier: text("identifier").notNull(),
++  value: text("value").notNull(),
++  expiresAt: timestamp("expires_at").notNull(),
++  createdAt: timestamp("created_at").notNull().defaultNow(),
++  updatedAt: timestamp("updated_at").notNull().defaultNow(),
++});
++
++/* ────────────────────────────────
++ * App tables
++ * ──────────────────────────────── */
++
++/** Student profile — 1:1 with a user account. Privacy settings live here. */
++export const student = pgTable("student", {
++  id: text("id").primaryKey(),
++  userId: text("user_id")
++    .notNull()
++    .unique()
++    .references(() => user.id, { onDelete: "cascade" }),
++  displayName: text("display_name").notNull(),
++  avatarUrl: text("avatar_url"),
++  /** موافقة الطالبة على الظهور في لوحة أفضل 3 */
++  competitionOptIn: boolean("competition_opt_in").notNull().default(false),
++  createdAt: timestamp("created_at").notNull().defaultNow(),
++  updatedAt: timestamp("updated_at").notNull().defaultNow(),
++});
++
++/** The 42 hadiths of the course. */
++export const hadith = pgTable("hadith", {
++  id: text("id").primaryKey(),
++  order: integer("order").notNull().unique(),
++  title: text("title").notNull(),
++  arabicText: text("arabic_text").notNull(),
++  source: text("source"),
++  published: boolean("published").notNull().default(false),
++  publishedAt: timestamp("published_at"),
++  createdAt: timestamp("created_at").notNull().defaultNow(),
++  updatedAt: timestamp("updated_at").notNull().defaultNow(),
++});
++
++/** Recitation status of one student for one hadith (recited / not yet). */
++export const recitation = pgTable(
++  "recitation",
++  {
++    id: text("id").primaryKey(),
++    studentId: text("student_id")
++      .notNull()
++      .references(() => student.id, { onDelete: "cascade" }),
++    hadithId: text("hadith_id")
++      .notNull()
++      .references(() => hadith.id, { onDelete: "cascade" }),
++    recited: boolean("recited").notNull().default(false),
++    /** وقت اعتماد التسميع — يُستخدم لتحديد أول من أتمّت الحديث الأول */
++    recitedAt: timestamp("recited_at"),
++    updatedAt: timestamp("updated_at").notNull().defaultNow(),
++  },
++  (t) => [
++    uniqueIndex("recitation_student_hadith_uidx").on(t.studentId, t.hadithId),
++    index("recitation_hadith_idx").on(t.hadithId),
++    index("recitation_student_idx").on(t.studentId),
++  ]
++);
++
++/** Honors / badges, e.g. «سَابِقَةُ الخَيْرَات» لأول من أتمّت الحديث الأول. */
++export const achievement = pgTable("achievement", {
++  id: text("id").primaryKey(),
++  studentId: text("student_id")
++    .notNull()
++    .references(() => student.id, { onDelete: "cascade" }),
++  type: text("type").notNull(), // "first_hadith" | ...
++  hadithId: text("hadith_id").references(() => hadith.id, {
++    onDelete: "set null",
++  }),
++  title: text("title").notNull(),
++  description: text("description"),
++  awardedAt: timestamp("awarded_at").notNull().defaultNow(),
++  createdAt: timestamp("created_at").notNull().defaultNow(),
++});
++
++/** Global competition (Top 3) switch — controlled by the teacher only. */
++export const competitionSettings = pgTable("competition_settings", {
++  id: text("id").primaryKey().default("main"),
++  enabled: boolean("enabled").notNull().default(false),
++  updatedAt: timestamp("updated_at").notNull().defaultNow(),
++});
++
++/** Library of encouraging messages — original wording, rotated per visit. */
++export const message = pgTable("message", {
++  id: text("id").primaryKey(),
++  text: text("text").notNull(),
++  category: text("category"), // تحفيز | امتنان | همة | continuation | احتifa...
++  active: boolean("active").notNull().default(true),
++  createdAt: timestamp("created_at").notNull().defaultNow(),
++});
++
++/* ── Types ── */
++
++export type User = typeof user.$inferSelect;
++export type Student = typeof student.$inferSelect;
++export type Hadith = typeof hadith.$inferSelect;
++export type Recitation = typeof recitation.$inferSelect;
++export type Achievement = typeof achievement.$inferSelect;
++export type CompetitionSettings = typeof competitionSettings.$inferSelect;
++export type Message = typeof message.$inferSelect;
++
++export const schema = {
++  user,
++  session,
++  account,
++  verification,
++  student,
++  hadith,
++  recitation,
++  achievement,
++  competitionSettings,
++  message,
++};
+diff --git a/src/lib/permissions.ts b/src/lib/permissions.ts
+new file mode 100644
+index 0000000..09f08fc
+--- /dev/null
++++ b/src/lib/permissions.ts
+@@ -0,0 +1,51 @@
++import { headers } from "next/headers";
++import { redirect } from "next/navigation";
++import { eq } from "drizzle-orm";
++import { auth } from "@/lib/auth";
++import { db, student } from "@/lib/db";
++
++export type SessionUser = {
++  id: string;
++  name: string;
++  email: string;
++  username?: string | null;
++  role: string;
++  image?: string | null;
++};
++
++/** Current session user (with role + username) or null. Works in pages & route handlers. */
++export async function getSessionUser(): Promise<SessionUser | null> {
++  const session = await auth.api.getSession({ headers: await headers() });
++  if (!session?.user) return null;
++  const u = session.user as unknown as SessionUser;
++  return u;
++}
++
++/** Require any logged-in user, otherwise redirect to /login. */
++export async function requireUser(): Promise<SessionUser> {
++  const u = await getSessionUser();
++  if (!u) redirect("/login");
++  return u;
++}
++
++/** Require the teacher (admin), otherwise redirect. */
++export async function requireAdmin(): Promise<SessionUser> {
++  const u = await requireUser();
++  if (u.role !== "admin") redirect("/");
++  return u;
++}
++
++/** Require a student account, otherwise redirect. */
++export async function requireStudent(): Promise<{ user: SessionUser; student: typeof student.$inferSelect }> {
++  const u = await requireUser();
++  if (u.role === "admin") redirect("/admin");
++  const [profile] = await db.select().from(student).where(eq(student.userId, u.id)).limit(1);
++  if (!profile) redirect("/login");
++  return { user: u, student: profile };
++}
++
++/** Student profile for a user id (or null). */
++export async function getStudentByUserId(userId: string) {
++  const [profile] = await db.select().from(student).where(eq(student.userId, userId)).limit(1);
++  return profile ?? null;
++}
+diff --git a/tailwind.config.ts b/tailwind.config.ts
+new file mode 100644
+index 0000000..e328ff7
+--- /dev/null
++++ b/tailwind.config.ts
+@@ -0,0 +1,46 @@
++import type { Config } from "tailwindcss";
++
++const config: Config = {
++  content: ["./src/**/*.{ts,tsx}"],
++  theme: {
++    extend: {
++      colors: {
++        blush: "#F9EFF2",
++        powder: "#F0DCE3",
++        dusty: "#DDB8C5",
++        muted: "#B77B91",
++        deep: "#995C74",
++        ivory: "#FFFAF8",
++        ink: "#4A3540",
++      },
++      fontFamily: {
++        sans: ["Tajawal", "system-ui", "sans-serif"],
++        display: ["Amiri", "Tajawal", "serif"],
++      },
++      boxShadow: {
++        soft: "0 10px 30px -12px rgba(153, 92, 116, 0.18)",
++        card: "0 6px 24px -10px rgba(153, 92, 116, 0.15)",
++      },
++      borderRadius: {
++        card: "1.5rem",
++      },
++      keyframes: {
++        flash: {
++          "0%": { backgroundColor: "rgba(221, 184, 197, 0.9)" },
++          "100%": { backgroundColor: "rgba(221, 184, 197, 0)" },
++        },
++        fadeUp: {
++          "0%": { opacity: "0", transform: "translateY(10px)" },
++          "100%": { opacity: "1", transform: "translateY(0)" },
++        },
++      },
++      animation: {
++        flash: "flash 1.2s ease-out",
++        fadeUp: "fadeUp 0.5s ease-out both",
++      },
++    },
++  },
++  plugins: [],
++};
++
++export default config;
+diff --git a/tsconfig.json b/tsconfig.json
+new file mode 100644
+index 0000000..49e4cf3
+--- /dev/null
++++ b/tsconfig.json
+@@ -0,0 +1,20 @@
++{
++  "compilerOptions": {
++    "lib": ["dom", "dom.iterable", "esnext"],
++    "allowJs": true,
++    "skipLibCheck": true,
++    "strict": true,
++    "noEmit": true,
++    "esModuleInterop": true,
++    "module": "esnext",
++    "moduleResolution": "bundler",
++    "resolveJsonModule": true,
++    "isolatedModules": true,
++    "jsx": "preserve",
++    "incremental": true,
++    "plugins": [{ "name": "next" }],
++    "paths": { "@/*": ["./src/*"] }
++  },
++  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
++  "exclude": ["node_modules"]
++}

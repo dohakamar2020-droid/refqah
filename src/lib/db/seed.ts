@@ -9,6 +9,7 @@ import {
   recitation,
   message,
   competitionSettings,
+  registrationSettings,
   achievement,
 } from "./schema";
 import { HADITHS } from "../data/hadiths";
@@ -60,6 +61,11 @@ async function seedCompetitionSettings() {
   await db
     .insert(competitionSettings)
     .values({ id: "main", enabled: false })
+    .onConflictDoNothing();
+  // Self-registration starts switched OFF — the teacher turns it on.
+  await db
+    .insert(registrationSettings)
+    .values({ id: "main", enabled: false, code: null })
     .onConflictDoNothing();
 }
 
@@ -130,22 +136,39 @@ async function seedDemoPublished() {
     .where(inArray(hadith.order, Array.from({ length: 12 }, (_, i) => i + 1)));
 }
 
-/** Create the teacher account if the app has no users yet. */
-async function seedAdmin() {
-  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(user);
-  if ((row?.n ?? 0) > 0) return;
+/**
+ * Create the teacher account — but ONLY when explicitly asked for.
+ *
+ * The app never ships with a default password any more: a fresh installation
+ * shows the first-run setup screen (/setup) where the teacher chooses her own
+ * credentials. This function exists for headless/CI provisioning, and is
+ * reachable from `npm run seed` via SEED_ADMIN=true.
+ */
+export async function seedAdminFromEnv() {
+  if (await hasAdmin()) return false;
 
   const username = process.env.ADMIN_USERNAME || "admin";
   const email = process.env.ADMIN_EMAIL || "admin@refqah.local";
-  const password = process.env.ADMIN_PASSWORD || "admin12345";
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) return false;
 
   await createUserWithPassword({
-    name: "المعلمة",
+    name: process.env.ADMIN_NAME || "المعلمة",
     email,
     username,
     password,
     role: "admin",
   });
+  return true;
+}
+
+/** Is there at least one teacher account? */
+export async function hasAdmin(): Promise<boolean> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(user)
+    .where(eq(user.role, "admin"));
+  return (row?.n ?? 0) > 0;
 }
 
 /* ── Demo data ─────────────────────────────────────────────── */
@@ -282,7 +305,8 @@ export function ensureSeed(): Promise<void> {
       await seedHadiths();
       await seedMessages();
       await seedCompetitionSettings();
-      await seedAdmin();
+      // NOTE: the teacher account is NOT created here on purpose — a fresh
+      // install must go through the first-run setup screen at /setup.
       const wantDemo = process.env.SEED_DEMO_STUDENTS
         ? process.env.SEED_DEMO_STUDENTS === "true"
         : !isProdDb;
@@ -290,6 +314,7 @@ export function ensureSeed(): Promise<void> {
         await seedDemoPublished();
         await seedDemoStudents();
       }
+      if (process.env.SEED_ADMIN === "true") await seedAdminFromEnv();
     })().catch((err) => {
       seedPromise = null;
       throw err;

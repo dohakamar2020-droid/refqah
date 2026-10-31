@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { deleteStudent, updateStudent } from "@/lib/actions";
 import { SmallFlower } from "@/components/floral";
@@ -8,6 +9,7 @@ type StudentItem = {
   id: string;
   displayName: string;
   username: string | null;
+  phone: string | null;
   competitionOptIn: boolean;
 };
 
@@ -46,6 +48,7 @@ export function StudentRow({ student }: { student: StudentItem }) {
             <p className="font-medium text-deep">{student.displayName}</p>
             <p className="text-xs text-muted" dir="ltr">
               {student.username ?? "—"}
+              {student.phone ? ` · ${student.phone}` : ""}
             </p>
           </div>
         </div>
@@ -57,6 +60,12 @@ export function StudentRow({ student }: { student: StudentItem }) {
               موافقة على المنافسة
             </span>
           )}
+          <Link
+            href={`/admin/reports/${student.id}`}
+            className="btn-ghost !px-4 !py-2 text-xs"
+          >
+            تقرير
+          </Link>
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
@@ -115,6 +124,16 @@ export function StudentRow({ student }: { student: StudentItem }) {
           <div>
             <label className="label">كلمة مرور جديدة (اختياري)</label>
             <input name="password" type="text" className="field" />
+          </div>
+          <div>
+            <label className="label">رقم الواتساب (اختياري)</label>
+            <input
+              name="phone"
+              dir="ltr"
+              defaultValue={student.phone ?? ""}
+              className="field"
+              placeholder="201012345678"
+            />
           </div>
           <label className="flex items-center gap-2 text-sm text-ink sm:col-span-2">
             <input

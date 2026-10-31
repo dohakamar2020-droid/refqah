@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS "student" (
   "user_id" text NOT NULL UNIQUE REFERENCES "user"("id") ON DELETE cascade,
   "display_name" text NOT NULL,
   "avatar_url" text,
+  "phone" text,
   "competition_opt_in" boolean DEFAULT false NOT NULL,
   "created_at" timestamp DEFAULT now() NOT NULL,
   "updated_at" timestamp DEFAULT now() NOT NULL
@@ -114,6 +115,16 @@ CREATE TABLE IF NOT EXISTS "message" (
   "category" text,
   "active" boolean DEFAULT true NOT NULL,
   "created_at" timestamp DEFAULT now() NOT NULL
+);
+
+-- Added after the initial schema: optional WhatsApp number on the student profile
+ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "phone" text;
+
+CREATE TABLE IF NOT EXISTS "registration_settings" (
+  "id" text PRIMARY KEY DEFAULT 'main' NOT NULL,
+  "enabled" boolean DEFAULT false NOT NULL,
+  "code" text,
+  "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "recitation_student_hadith_uidx" ON "recitation" USING btree ("student_id","hadith_id");

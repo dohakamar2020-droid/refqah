@@ -1,4 +1,5 @@
-import { getStudents } from "@/lib/queries";
+import { getRegistrationSettings, getStudents } from "@/lib/queries";
+import { RegistrationManager } from "@/components/admin/registration-manager";
 import { StudentCreateForm } from "@/components/admin/student-create-form";
 import { StudentRow } from "@/components/admin/student-row";
 import { SmallFlower } from "@/components/floral";
@@ -6,11 +7,20 @@ import { SmallFlower } from "@/components/floral";
 export const dynamic = "force-dynamic";
 
 export default async function AdminStudentsPage() {
-  const students = await getStudents();
+  const [students, registration] = await Promise.all([
+    getStudents(),
+    getRegistrationSettings(),
+  ]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,26rem)_1fr] lg:items-start">
-      <StudentCreateForm />
+      <div className="space-y-6">
+        <StudentCreateForm />
+        <RegistrationManager
+          enabled={registration.enabled}
+          code={registration.code}
+        />
+      </div>
 
       <section className="card card-pad">
         <h2 className="font-display text-xl text-deep">الطالبات المسجلات</h2>
@@ -29,6 +39,7 @@ export default async function AdminStudentsPage() {
                   id: s.id,
                   displayName: s.displayName,
                   username: s.username,
+                  phone: s.phone,
                   competitionOptIn: s.competitionOptIn,
                 }}
               />

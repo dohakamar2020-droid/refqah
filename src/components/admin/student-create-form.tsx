@@ -80,6 +80,21 @@ export function StudentCreateForm() {
             placeholder="name@example.com"
           />
         </div>
+        <div>
+          <label className="label" htmlFor="phone">
+            رقم الواتساب (اختياري)
+          </label>
+          <input
+            id="phone"
+            name="phone"
+            dir="ltr"
+            className="field"
+            placeholder="201012345678"
+          />
+          <p className="mt-1 text-xs text-muted">
+            بالصيغة الدولية — لفتح محادثة واتساب عند إرسال التقرير
+          </p>
+        </div>
       </div>
 
       <label className="mt-4 flex cursor-pointer items-center gap-3 text-sm text-ink">

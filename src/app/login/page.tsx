@@ -1,10 +1,27 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/permissions";
-import { hasAdmin } from "@/lib/queries";
+import { getRegistrationSettings, hasAdmin } from "@/lib/queries";
 import { LoginForm } from "@/components/login-form";
 import { FloralBranch, SmallFlower } from "@/components/floral";
 
 export const dynamic = "force-dynamic";
+
+/** Shown only while the teacher has self-registration switched on. */
+async function RegistrationHint() {
+  const settings = await getRegistrationSettings();
+  if (!settings.enabled) return null;
+  return (
+    <p className="mt-3 text-center text-sm">
+      <Link
+        href="/register"
+        className="text-deep underline decoration-dusty underline-offset-4"
+      >
+        حسابكِ الأول؟ سجّلي بنفسكِ
+      </Link>
+    </p>
+  );
+}
 
 export default async function LoginPage() {
   const me = await getSessionUser();
@@ -34,6 +51,8 @@ export default async function LoginPage() {
         <p className="mt-6 text-center text-xs text-muted">
           لا تستطيع الطالبات تعديل حالات التسميع؛ صلاحية التعديل للمعلمة فقط.
         </p>
+
+        <RegistrationHint />
       </div>
     </div>
   );

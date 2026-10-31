@@ -9,6 +9,7 @@ import {
   recitation,
   achievement,
   competitionSettings,
+  registrationSettings,
   message,
 } from "@/lib/db/schema";
 import { ensureReady } from "@/lib/db/ready";
@@ -214,6 +215,30 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
     reachedAt: r.reachedAt ?? null,
   }));
 }
+
+export type RegistrationState = {
+  enabled: boolean;
+  /** كود الانضمام — null يعني أن التسجيل مفتوح لمن يعرف الرابط */
+  code: string | null;
+  updatedAt: Date | null;
+};
+
+/** Self-registration settings (cached per request). */
+export const getRegistrationSettings = cache(
+  async function getRegistrationSettings(): Promise<RegistrationState> {
+    await ensureReady();
+    const [row] = await db
+      .select()
+      .from(registrationSettings)
+      .where(eq(registrationSettings.id, "main"))
+      .limit(1);
+    return {
+      enabled: row?.enabled ?? false,
+      code: row?.code ?? null,
+      updatedAt: row?.updatedAt ?? null,
+    };
+  }
+);
 
 export async function getCompetitionEnabled(): Promise<boolean> {
   await ensureReady();

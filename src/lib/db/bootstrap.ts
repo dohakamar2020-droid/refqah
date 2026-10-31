@@ -120,6 +120,13 @@ CREATE TABLE IF NOT EXISTS "message" (
 -- Added after the initial schema: optional WhatsApp number on the student profile
 ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "phone" text;
 
+CREATE TABLE IF NOT EXISTS "registration_settings" (
+  "id" text PRIMARY KEY DEFAULT 'main' NOT NULL,
+  "enabled" boolean DEFAULT false NOT NULL,
+  "code" text,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "recitation_student_hadith_uidx" ON "recitation" USING btree ("student_id","hadith_id");
 CREATE INDEX IF NOT EXISTS "recitation_hadith_idx" ON "recitation" USING btree ("hadith_id");
 CREATE INDEX IF NOT EXISTS "recitation_student_idx" ON "recitation" USING btree ("student_id");

@@ -12,6 +12,7 @@ import {
   hadith,
   achievement,
   competitionSettings,
+  registrationSettings,
   message,
 } from "@/lib/db/schema";
 import { ensureReady } from "@/lib/db/ready";
@@ -529,6 +530,108 @@ export async function updateMyProfile(formData: FormData): Promise<Result> {
     .update(user)
     .set({ name, updatedAt: new Date() })
     .where(eq(user.id, me.id));
+
+  revalidateAll();
+  return { ok: true };
+}
+
+/* ────────────────────────────────
+ * Student self-registration
+ * ──────────────────────────────── */
+
+/** A random, easy-to-dictate join code such as "RQ-4K7T". */
+function generateJoinCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusable chars
+  let out = "";
+  for (let i = 0; i < 6; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return `RQ-${out}`;
+}
+
+/** The teacher turns self-registration on/off and rotates the join code. */
+export async function setRegistrationSettings(formData: FormData): Promise<Result> {
+  await ensureReady();
+  const authCheck = await requireAdminOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+
+  const enabled = formData.get("enabled") === "on";
+  const rotate = formData.get("rotate") === "on" || formData.get("rotate") === "true";
+  const requireCode = formData.get("requireCode") === "on";
+
+  const [current] = await db
+    .select()
+    .from(registrationSettings)
+    .where(eq(registrationSettings.id, "main"))
+    .limit(1);
+
+  let code: string | null = requireCode ? current?.code ?? null : null;
+  if (requireCode && (rotate || !code)) code = generateJoinCode();
+
+  await db
+    .insert(registrationSettings)
+    .values({ id: "main", enabled, code, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: registrationSettings.id,
+      set: { enabled, code, updatedAt: new Date() },
+    });
+
+  revalidateAll();
+  return { ok: true };
+}
+
+/**
+ * A student creates her own account.
+ * Only allowed while the teacher has self-registration switched on, and the
+ * join code (when set) must match. Always creates a plain student — never an
+ * admin — so this can never be used to gain teacher privileges.
+ */
+export async function registerStudent(formData: FormData): Promise<Result> {
+  await ensureReady();
+
+  const [settings] = await db
+    .select()
+    .from(registrationSettings)
+    .where(eq(registrationSettings.id, "main"))
+    .limit(1);
+
+  if (!settings?.enabled)
+    return { ok: false, error: "التسجيل الذاتي مغلق حاليًا — تواصلي مع المعلمة" };
+
+  const name = String(formData.get("name") ?? "").trim();
+  const username = String(formData.get("username") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirmPassword") ?? "");
+  const code = String(formData.get("code") ?? "").trim();
+  const phone = normalizePhone(formData.get("phone"));
+
+  if (phone === "invalid")
+    return { ok: false, error: "رقم الواتساب غير صحيح (استخدمي الصيغة الدولية مثل 201012345678)" };
+
+  if (!name) return { ok: false, error: "الاسم مطلوب" };
+  if (username.length < 3)
+    return { ok: false, error: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" };
+  if (password.length < 8)
+    return { ok: false, error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" };
+  if (password !== confirm)
+    return { ok: false, error: "كلمتا المرور غير متطابقتين" };
+
+  if (settings.code && code.toUpperCase() !== settings.code.toUpperCase())
+    return { ok: false, error: "كود الانضمام غير صحيح" };
+
+  try {
+    await createUserWithPassword({
+      name,
+      email: `${username.toLowerCase()}@refqah.local`,
+      username,
+      password,
+      role: "student",
+      displayName: name,
+      competitionOptIn: false, // she opts in herself later
+    });
+  } catch {
+    return { ok: false, error: "اسم المستخدم مستخدم بالفعل — جرّبي اسمًا آخر" };
+  }
 
   revalidateAll();
   return { ok: true };

@@ -15,6 +15,13 @@
       "when": 1793482664804,
       "tag": "0001_brave_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793484198660,
+      "tag": "0002_striped_scalphunter",
+      "breakpoints": true
     }
   ]
 }

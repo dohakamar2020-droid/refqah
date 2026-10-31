@@ -143,6 +143,19 @@ export const achievement = pgTable("achievement", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+/**
+ * Self-registration switch — lets students create their own accounts instead
+ * of the teacher adding them one by one. Off by default; when on, the teacher
+ * can require a join code so only her class can sign up.
+ */
+export const registrationSettings = pgTable("registration_settings", {
+  id: text("id").primaryKey().default("main"),
+  enabled: boolean("enabled").notNull().default(false),
+  /** كود الانضمام — اختياري؛ إن كان فارغًا فالتسجيل مفتوح لمن يعرف الرابط */
+  code: text("code"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 /** Global competition (Top 3) switch — controlled by the teacher only. */
 export const competitionSettings = pgTable("competition_settings", {
   id: text("id").primaryKey().default("main"),
@@ -166,6 +179,7 @@ export type Student = typeof student.$inferSelect;
 export type Hadith = typeof hadith.$inferSelect;
 export type Recitation = typeof recitation.$inferSelect;
 export type Achievement = typeof achievement.$inferSelect;
+export type RegistrationSettings = typeof registrationSettings.$inferSelect;
 export type CompetitionSettings = typeof competitionSettings.$inferSelect;
 export type Message = typeof message.$inferSelect;
 
@@ -178,6 +192,7 @@ export const schema = {
   hadith,
   recitation,
   achievement,
+  registrationSettings,
   competitionSettings,
   message,
 };

@@ -9,6 +9,7 @@ import {
   recitation,
   message,
   competitionSettings,
+  registrationSettings,
   achievement,
 } from "./schema";
 import { HADITHS } from "../data/hadiths";
@@ -60,6 +61,11 @@ async function seedCompetitionSettings() {
   await db
     .insert(competitionSettings)
     .values({ id: "main", enabled: false })
+    .onConflictDoNothing();
+  // Self-registration starts switched OFF — the teacher turns it on.
+  await db
+    .insert(registrationSettings)
+    .values({ id: "main", enabled: false, code: null })
     .onConflictDoNothing();
 }
 

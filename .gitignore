@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# next.js
+/.next/
+/out/
+
+# local embedded database (PGlite) — do not commit data
+/.data/
+
+# env
+/.env
+/.env.local
+/.env*.local
+
+# misc
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store

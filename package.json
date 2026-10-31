@@ -1,0 +1,38 @@
+{
+  "name": "refqah-al-arbaeen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "رِفقة الأربعين — رحلة علمٍ وحفظٍ وعمل (منصة متابعة دورة الأربعين Nukawية)",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.14",
+    "@fontsource/amiri": "5.3.0",
+    "@fontsource/tajawal": "5.3.0",
+    "@neondatabase/serverless": "1.2.0",
+    "better-auth": "1.7.14",
+    "drizzle-orm": "0.45.4",
+    "next": "14.2.35",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.x",
+    "@types/react": "18.x",
+    "@types/react-dom": "18.x",
+    "autoprefixer": "10.4.20",
+    "drizzle-kit": "0.31.4",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
+    "tsx": "4.23.15",
+    "typescript": "5.6.3"
+  }
+}

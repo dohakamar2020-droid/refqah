@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-ivory text-ink font-sans antialiased;
+    background-image:
+      radial-gradient(60rem 32rem at 100% -10%, #f0dce3 0%, rgba(240, 220, 227, 0) 60%),
+      radial-gradient(48rem 28rem at 0% 0%, #f9eff2 0%, rgba(249, 239, 242, 0) 55%);
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+
+  /* Arabic numerals read better with the app font stack */
+  .nums {
+    font-feature-settings: "tnum";
+  }
+
+  ::selection {
+    background: #ddb8c5;
+    color: #4a3540;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card bg-white/85 shadow-card backdrop-blur-sm border border-powder/70;
+  }
+
+  .card-pad {
+    @apply p-5 sm:p-7;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3
+      font-medium transition-all duration-200 disabled:opacity-50
+      disabled:cursor-not-allowed text-sm sm:text-base;
+  }
+
+  .btn-primary {
+    @apply btn bg-deep text-white hover:bg-muted shadow-soft hover:-translate-y-0.5;
+  }
+
+  .btn-soft {
+    @apply btn bg-powder text-deep hover:bg-dusty;
+  }
+
+  .btn-ghost {
+    @apply btn border border-dusty/70 text-deep hover:bg-blush;
+  }
+
+  .btn-danger {
+    @apply btn bg-white text-deep border border-dusty/60 hover:bg-blush text-sm px-4 py-2;
+  }
+
+  .field {
+    @apply w-full rounded-2xl border border-powder bg-white px-4 py-3 text-ink
+      placeholder:text-muted/50 outline-none transition
+      focus:border-muted focus:ring-4 focus:ring-dusty/25;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-deep mb-1.5;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium;
+  }
+
+  /* Sticky first column for the 42-column grid (RTL → sticky on the right) */
+  .sticky-col {
+    position: sticky;
+    right: 0;
+    z-index: 20;
+    background: #fffaf8;
+  }
+
+  .sticky-col-header {
+    position: sticky;
+    right: 0;
+    z-index: 40;
+    background: #f9eff2;
+  }
+
+  .grid-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .grid-scroll::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+  }
+
+  .grid-scroll::-webkit-scrollbar-thumb {
+    background: #ddb8c5;
+    border-radius: 999px;
+  }
+
+  .grid-scroll::-webkit-scrollbar-track {
+    background: #f9eff2;
+  }
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

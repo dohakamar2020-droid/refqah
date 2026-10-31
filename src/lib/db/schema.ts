@@ -96,8 +96,11 @@ export const hadith = pgTable("hadith", {
   id: text("id").primaryKey(),
   order: integer("order").notNull().unique(),
   title: text("title").notNull(),
+  /** الراوي — «عن … رضي الله عنه» */
+  narrator: text("narrator"),
   arabicText: text("arabic_text").notNull(),
-  source: text("source"),
+  /** التخريج — من رواه ودرجته */
+  takhrij: text("takhrij"),
   published: boolean("published").notNull().default(false),
   publishedAt: timestamp("published_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

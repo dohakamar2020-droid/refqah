@@ -35,8 +35,9 @@ CREATE TABLE "hadith" (
 	"id" text PRIMARY KEY NOT NULL,
 	"order" integer NOT NULL,
 	"title" text NOT NULL,
+	"narrator" text,
 	"arabic_text" text NOT NULL,
-	"source" text,
+	"takhrij" text,
 	"published" boolean DEFAULT false NOT NULL,
 	"published_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
@@ -61,6 +62,13 @@ CREATE TABLE "recitation" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "registration_settings" (
+	"id" text PRIMARY KEY DEFAULT 'main' NOT NULL,
+	"enabled" boolean DEFAULT false NOT NULL,
+	"code" text,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "session" (
 	"id" text PRIMARY KEY NOT NULL,
 	"expires_at" timestamp NOT NULL,
@@ -78,6 +86,7 @@ CREATE TABLE "student" (
 	"user_id" text NOT NULL,
 	"display_name" text NOT NULL,
 	"avatar_url" text,
+	"phone" text,
 	"competition_opt_in" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,

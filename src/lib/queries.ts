@@ -21,7 +21,8 @@ export type HadithRow = {
   order: number;
   title: string;
   arabicText: string;
-  source: string | null;
+  narrator: string | null;
+  takhrij: string | null;
   published: boolean;
   publishedAt: Date | null;
 };
@@ -34,7 +35,8 @@ export async function getAllHadiths(): Promise<HadithRow[]> {
       order: hadith.order,
       title: hadith.title,
       arabicText: hadith.arabicText,
-      source: hadith.source,
+      narrator: hadith.narrator,
+      takhrij: hadith.takhrij,
       published: hadith.published,
       publishedAt: hadith.publishedAt,
     })

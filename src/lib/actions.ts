@@ -265,15 +265,22 @@ export async function updateHadith(formData: FormData): Promise<Result> {
 
   const hadithId = String(formData.get("hadithId") ?? "");
   const title = String(formData.get("title") ?? "").trim();
+  const narrator = String(formData.get("narrator") ?? "").trim();
   const arabicText = String(formData.get("arabicText") ?? "").trim();
-  const source = String(formData.get("source") ?? "").trim();
+  const takhrij = String(formData.get("takhrij") ?? "").trim();
 
   if (!hadithId || !title || !arabicText)
     return { ok: false, error: "العنوان والنص مطلوبان" };
 
   await db
     .update(hadith)
-    .set({ title, arabicText, source: source || null, updatedAt: new Date() })
+    .set({
+      title,
+      narrator: narrator || null,
+      arabicText,
+      takhrij: takhrij || null,
+      updatedAt: new Date(),
+    })
     .where(eq(hadith.id, hadithId));
 
   revalidateAll();
@@ -286,8 +293,9 @@ export async function createHadith(formData: FormData): Promise<Result> {
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
 
   const title = String(formData.get("title") ?? "").trim();
+  const narrator = String(formData.get("narrator") ?? "").trim();
   const arabicText = String(formData.get("arabicText") ?? "").trim();
-  const source = String(formData.get("source") ?? "").trim();
+  const takhrij = String(formData.get("takhrij") ?? "").trim();
 
   if (!title || !arabicText) return { ok: false, error: "العنوان والنص مطلوبان" };
 
@@ -301,8 +309,9 @@ export async function createHadith(formData: FormData): Promise<Result> {
     id: newId("had"),
     order: (top?.order ?? 0) + 1,
     title,
+    narrator: narrator || null,
     arabicText,
-    source: source || null,
+    takhrij: takhrij || null,
     published: false,
   });
 

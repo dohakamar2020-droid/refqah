@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1793478668489,
-      "tag": "0000_init",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1793482664804,
-      "tag": "0001_brave_kingpin",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1793484198660,
-      "tag": "0002_striped_scalphunter",
+      "when": 1793487534226,
+      "tag": "0000_soft_thunderbolts",
       "breakpoints": true
     }
   ]

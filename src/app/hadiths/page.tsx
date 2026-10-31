@@ -42,11 +42,16 @@ export default async function HadithsPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <h2 className="font-display text-xl text-deep">{h.title}</h2>
-                  <p className="mt-3 leading-loose text-ink">{h.arabicText}</p>
+                  {h.narrator && (
+                    <p className="mt-2 font-display text-lg leading-loose text-deep">{h.narrator}</p>
+                  )}
+                  <p className="mt-3 whitespace-pre-line leading-loose text-ink">{h.arabicText}</p>
+                  {h.takhrij && (
+                    <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-muted">
+                      {h.takhrij}
+                    </p>
+                  )}
                   <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted">
-                    {h.source && (
-                      <span className="chip bg-blush text-muted">{h.source}</span>
-                    )}
                     {h.publishedAt && (
                       <span>نُشر في {formatDate(h.publishedAt)}</span>
                     )}

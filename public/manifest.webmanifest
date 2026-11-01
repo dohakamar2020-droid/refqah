@@ -1,0 +1,47 @@
+{
+  "name": "رِفقة الأربعين — رحلة علمٍ وحفظٍ وعمل",
+  "short_name": "رِفقة الأربعين",
+  "description": "مساحة تعليمية لمتابعة حفظ الأربعين النووية: 42 حديثًا، رحلة مشتركة، ومتابعة وتشجيع مستمر.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#F9EFF2",
+  "theme_color": "#F9EFF2",
+  "categories": ["education", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "رحلة الحفظ",
+      "short_name": "الأحاديث",
+      "url": "/hadiths"
+    },
+    {
+      "name": "ملفي",
+      "short_name": "ملفي",
+      "url": "/me"
+    }
+  ]
+}

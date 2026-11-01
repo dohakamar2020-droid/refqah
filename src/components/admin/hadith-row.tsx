@@ -10,6 +10,7 @@ export type HadithItem = {
   narrator: string | null;
   arabicText: string;
   takhrij: string | null;
+  textEdited: boolean;
   published: boolean;
 };
 
@@ -68,6 +69,14 @@ export function HadithRow({ hadith }: { hadith: HadithItem }) {
             >
               {published ? "منشور" : "لم يُنشر"}
             </span>
+            {hadith.textEdited && (
+              <span
+                className="chip bg-ivory text-muted"
+                title="عدّلتِ هذا النص بنفسك، فلا تُستبدل عند تحديث محتوى الأحاديث"
+              >
+                معدَّل يدويًا
+              </span>
+            )}
           </div>
           {hadith.narrator && (
             <p className="mt-2 text-sm leading-relaxed text-deep">{hadith.narrator}</p>

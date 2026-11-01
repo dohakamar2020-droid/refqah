@@ -10,9 +10,10 @@ import {
   message,
   competitionSettings,
   registrationSettings,
+  siteMeta,
   achievement,
 } from "./schema";
-import { HADITHS } from "../data/hadiths";
+import { HADITHS, HADITH_CONTENT_VERSION } from "../data/hadiths";
 import { MESSAGES } from "../data/messages";
 
 const isProdDb = Boolean(process.env.DATABASE_URL);
@@ -21,25 +22,106 @@ function id(prefix: string) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
-/** Insert the 42 hadiths (keeps whatever the teacher already changed). */
-async function seedHadiths() {
-  const existing = await db
-    .select({ order: hadith.order })
+const META_CONTENT_VERSION = "hadith_content_version";
+
+async function getMetaValue(key: string): Promise<number | null> {
+  const [row] = await db
+    .select({ value: siteMeta.value })
+    .from(siteMeta)
+    .where(eq(siteMeta.key, key))
+    .limit(1);
+  const n = Number(row?.value);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function setMetaValue(key: string, value: number) {
+  await db
+    .insert(siteMeta)
+    .values({ key, value: String(value), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: siteMeta.key,
+      set: { value: String(value), updatedAt: new Date() },
+    });
+}
+
+/**
+ * Sync the 42 hadiths with the bundled content.
+ *
+ * Two jobs, in order:
+ *  1. Insert any hadith that isn't in the database yet.
+ *  2. When HADITH_CONTENT_VERSION is higher than the version recorded in
+ *     site_meta, push the new narrator/matn/takhrij over the stored text.
+ *     Hadiths the teacher edited herself (textEdited) are left alone so her
+ *     own wording is never overwritten.
+ *
+ * Step 2 is what makes content updates actually reach an existing database —
+ * inserting missing rows alone would leave a deployed database on stale text.
+ */
+async function seedHadiths(): Promise<{ inserted: number; updated: number }> {
+  const rows = await db
+    .select({
+      order: hadith.order,
+      textEdited: hadith.textEdited,
+      narrator: hadith.narrator,
+      arabicText: hadith.arabicText,
+      takhrij: hadith.takhrij,
+    })
     .from(hadith);
-  const have = new Set(existing.map((h) => h.order));
-  const missing = HADITHS.filter((h) => !have.has(h.order));
-  if (missing.length === 0) return;
-  await db.insert(hadith).values(
-    missing.map((h) => ({
-      id: id("had"),
-      order: h.order,
-      title: h.title,
-      narrator: h.narrator,
-      arabicText: h.arabicText,
-      takhrij: h.takhrij,
-      published: false,
-    }))
-  );
+
+  const stored = rows.reduce<Map<number, (typeof rows)[number]>>((m, r) => {
+    m.set(r.order, r);
+    return m;
+  }, new Map());
+
+  // 1 ── insert what's missing
+  const missing = HADITHS.filter((h) => !stored.has(h.order));
+  if (missing.length > 0) {
+    await db.insert(hadith).values(
+      missing.map((h) => ({
+        id: id("had"),
+        order: h.order,
+        title: h.title,
+        narrator: h.narrator,
+        arabicText: h.arabicText,
+        takhrij: h.takhrij,
+        published: false,
+      }))
+    );
+  }
+
+  // 2 ── push new content when the bundled version moved forward
+  const applied = await getMetaValue(META_CONTENT_VERSION);
+  const needsSync =
+    process.env.FORCE_HADITH_SYNC === "true" ||
+    applied === null ||
+    applied < HADITH_CONTENT_VERSION;
+
+  let updated = 0;
+  if (needsSync) {
+    for (const h of HADITHS) {
+      const row = stored.get(h.order);
+      if (!row || row.textEdited) continue;
+      if (
+        row.narrator === h.narrator &&
+        row.arabicText === h.arabicText &&
+        row.takhrij === h.takhrij
+      )
+        continue;
+      await db
+        .update(hadith)
+        .set({
+          narrator: h.narrator,
+          arabicText: h.arabicText,
+          takhrij: h.takhrij,
+          updatedAt: new Date(),
+        })
+        .where(eq(hadith.order, h.order));
+      updated++;
+    }
+    await setMetaValue(META_CONTENT_VERSION, HADITH_CONTENT_VERSION);
+  }
+
+  return { inserted: missing.length, updated };
 }
 
 /** Insert the encouragement message library once. */

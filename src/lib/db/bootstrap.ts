@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS "hadith" (
   "arabic_text" text NOT NULL,
   "narrator" text,
   "takhrij" text,
+  "text_edited" boolean DEFAULT false NOT NULL,
   "published" boolean DEFAULT false NOT NULL,
   "published_at" timestamp,
   "created_at" timestamp DEFAULT now() NOT NULL,
@@ -124,6 +125,13 @@ ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "phone" text;
 -- الراوي والتخريج: replaced the single "source" field
 ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "narrator" text;
 ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "takhrij" text;
+ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "text_edited" boolean DEFAULT false NOT NULL;
+
+CREATE TABLE IF NOT EXISTS "site_meta" (
+  "key" text PRIMARY KEY NOT NULL,
+  "value" text NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS "registration_settings" (
   "id" text PRIMARY KEY DEFAULT 'main' NOT NULL,

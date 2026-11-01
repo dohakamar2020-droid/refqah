@@ -279,6 +279,9 @@ export async function updateHadith(formData: FormData): Promise<Result> {
       narrator: narrator || null,
       arabicText,
       takhrij: takhrij || null,
+      // Mark it as hand-edited so a future content-version sync never
+      // overwrites the teacher's own wording.
+      textEdited: true,
       updatedAt: new Date(),
     })
     .where(eq(hadith.id, hadithId));

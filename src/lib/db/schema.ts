@@ -101,6 +101,8 @@ export const hadith = pgTable("hadith", {
   arabicText: text("arabic_text").notNull(),
   /** التخريج — من رواه ودرجته */
   takhrij: text("takhrij"),
+  /** true once the teacher edits this hadith herself → excluded from content syncs */
+  textEdited: boolean("text_edited").notNull().default(false),
   published: boolean("published").notNull().default(false),
   publishedAt: timestamp("published_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -182,6 +184,14 @@ export type Student = typeof student.$inferSelect;
 export type Hadith = typeof hadith.$inferSelect;
 export type Recitation = typeof recitation.$inferSelect;
 export type Achievement = typeof achievement.$inferSelect;
+/** Key/value rows for app bookkeeping (seeded content version, …). */
+export const siteMeta = pgTable("site_meta", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type SiteMeta = typeof siteMeta.$inferSelect;
 export type RegistrationSettings = typeof registrationSettings.$inferSelect;
 export type CompetitionSettings = typeof competitionSettings.$inferSelect;
 export type Message = typeof message.$inferSelect;

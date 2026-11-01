@@ -39,6 +39,7 @@ export default async function AdminHadithsPage() {
               narrator: h.narrator,
               arabicText: h.arabicText,
               takhrij: h.takhrij,
+              textEdited: h.textEdited,
               published: h.published,
             }}
           />

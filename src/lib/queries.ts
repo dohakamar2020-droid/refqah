@@ -23,6 +23,7 @@ export type HadithRow = {
   arabicText: string;
   narrator: string | null;
   takhrij: string | null;
+  textEdited: boolean;
   published: boolean;
   publishedAt: Date | null;
 };
@@ -37,6 +38,7 @@ export async function getAllHadiths(): Promise<HadithRow[]> {
       arabicText: hadith.arabicText,
       narrator: hadith.narrator,
       takhrij: hadith.takhrij,
+      textEdited: hadith.textEdited,
       published: hadith.published,
       publishedAt: hadith.publishedAt,
     })

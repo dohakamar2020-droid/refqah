@@ -8,6 +8,13 @@
       "when": 1793487534226,
       "tag": "0000_soft_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793495910802,
+      "tag": "0001_graceful_virginia_dare",
+      "breakpoints": true
     }
   ]
 }

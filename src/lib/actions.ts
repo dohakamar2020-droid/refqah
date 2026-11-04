@@ -26,7 +26,7 @@ import {
   newStudentCode,
 } from "@/lib/db/seed";
 import { getSessionUser } from "@/lib/permissions";
-import { isValidCode, normalizeCode } from "@/lib/codes";
+import { isValidCode, normalizeCode, normalizeName } from "@/lib/codes";
 import {
   createTeacherWithCode,
   joinWithTeacherCode,
@@ -168,8 +168,22 @@ export async function createStudent(formData: FormData): Promise<Result> {
     };
 
   if (!name) return { ok: false, error: "اسم الطالبة مطلوب" };
-  if (password.length < 6)
-    return { ok: false, error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" };
+  // Same rule as every other account: 8+ characters. A shorter password would
+  // be accepted here but refused at sign-in, locking the student out.
+  if (password.length < 8)
+    return { ok: false, error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" };
+
+  // Two girls with the identical stored name and no personal code of their own
+  // could not be told apart at sign-in with the class code.
+  const classmates = await db
+    .select({ displayName: student.displayName })
+    .from(student)
+    .where(eq(student.teacherId, teacherId));
+  if (classmates.some((c) => normalizeName(c.displayName) === normalizeName(name)))
+    return {
+      ok: false,
+      error: "توجد طالبة بنفس الاسم في فصلك — أضيفي ما يميّزها (اسم الأب مثلًا)",
+    };
 
   const code = await newStudentCode();
   const username = code.replace(/-/g, "").toLowerCase();
@@ -220,8 +234,9 @@ export async function updateStudent(formData: FormData): Promise<Result> {
     };
 
   if (!studentId || !name) return { ok: false, error: "بيانات غير مكتملة" };
-  if (password && password.length < 6)
-    return { ok: false, error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" };
+  // 8+ here too: a shorter reset password would be refused at sign-in.
+  if (password && password.length < 8)
+    return { ok: false, error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" };
 
   const [s] = await db
     .select({ userId: student.userId })

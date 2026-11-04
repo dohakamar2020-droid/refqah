@@ -11,7 +11,17 @@ import {
   newStudentCode,
 } from "@/lib/db/seed";
 
-type Result = { ok: boolean; error?: string; code?: string };
+type Result = {
+  ok: boolean;
+  error?: string;
+  code?: string;
+  /**
+   * Sign-in only: the code is a teacher's class code, nobody in her class has
+   * this name, and she has self-registration open — so the girl is simply not
+   * registered yet. The form switches to «أول مرة» instead of showing a dead end.
+   */
+  needsJoin?: boolean;
+};
 
 export const INVALID_LOGIN = "البيانات غير صحيحة — راجعي الكود والاسم وكلمة المرور";
 
@@ -171,6 +181,7 @@ async function resolveStudentByCodeAndName(
 ): Promise<
   | { student: { id: string; userId: string; displayName: string } }
   | { ambiguous: true }
+  | { notRegistered: { teacherId: string } }
   | null
 > {
   const code = normalizeCode(rawCode);
@@ -201,10 +212,17 @@ async function resolveStudentByCodeAndName(
 
   const matches = rows.filter((r) => nameMatches(name, r.displayName));
   if (matches.length === 1) return { student: matches[0] };
-  // A class code is shared by all her classmates: two girls named «مريم» must
-  // type the rest of the name rather than have one of them opened at random.
-  if (matches.length > 1) return { ambiguous: true };
-  return null;
+  if (matches.length > 1) {
+    // «تقى» registered herself next to «تقى محمد قمر»: the typed name is an
+    // exact match for exactly one of them, so that is the one she means.
+    const typed = normalizeName(name);
+    const exact = matches.filter((r) => normalizeName(r.displayName) === typed);
+    if (exact.length === 1) return { student: exact[0] };
+    // A class code is shared by all her classmates: two girls named «مريم» must
+    // type the rest of the name rather than have one of them opened at random.
+    return { ambiguous: true };
+  }
+  return { notRegistered: { teacherId: t.id } };
 }
 
 /**
@@ -236,6 +254,21 @@ export async function signInStudentWithCode(formData: FormData): Promise<Result>
         "أكثر من طالبة بهذا الاسم في الفصل — اكتبي اسمك كاملًا كما سجّلته معلمتك",
     };
   if (!resolved) return { ok: false, error: INVALID_LOGIN };
+
+  if ("notRegistered" in resolved) {
+    // Right class code, but no girl by this name. If her teacher opened
+    // self-registration this is a first visit, not a mistake — say so.
+    const { getRegistrationSettings } = await import("@/lib/queries");
+    const settings = await getRegistrationSettings(resolved.notRegistered.teacherId);
+    if (settings.enabled)
+      return {
+        ok: false,
+        needsJoin: true,
+        error:
+          "لم نجد اسمك في هذا الفصل بعد — إن كانت أول مرة لكِ، أكّدي كلمة المرور لننشئ حسابك",
+      };
+    return { ok: false, error: INVALID_LOGIN };
+  }
 
   const { student: match } = resolved;
 

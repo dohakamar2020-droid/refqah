@@ -34,7 +34,13 @@ import {
   signInTeacherWithCode,
 } from "@/lib/code-auth";
 
-type Result = { ok: boolean; error?: string; code?: string };
+type Result = {
+  ok: boolean;
+  error?: string;
+  code?: string;
+  /** Student sign-in: not registered yet and self-registration is open. */
+  needsJoin?: boolean;
+};
 
 /**
  * Every write goes through here.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { changeMyPassword, updateMyProfile } from "@/lib/actions";
+import { changeMyPassword, changeTeacherCode, updateMyProfile } from "@/lib/actions";
 
 export function ChangePasswordForm() {
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +124,63 @@ export function UpdateProfileForm({ name }: { name: string }) {
 
       <button type="submit" className="btn-primary" disabled={pending}>
         {pending ? "جارٍ الحفظ…" : "حفظ"}
+      </button>
+    </form>
+  );
+}
+
+export function ChangeCodeForm({ currentCode }: { currentCode: string }) {
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  function onSubmit(formData: FormData) {
+    setError(null);
+    setDone(false);
+    startTransition(async () => {
+      const res = await changeTeacherCode(formData);
+      if (res.ok) {
+        setDone(true);
+        (document.getElementById("code-form") as HTMLFormElement | null)?.reset();
+      } else {
+        setError(res.error ?? "تعذّر تغيير الكود");
+      }
+    });
+  }
+
+  return (
+    <form id="code-form" action={onSubmit} className="space-y-4">
+      <div>
+        <label className="label" htmlFor="newCode">
+          كود المعلمة الجديد
+        </label>
+        <input
+          id="newCode"
+          name="code"
+          dir="ltr"
+          className="field text-center tracking-[0.15em]"
+          placeholder={currentCode}
+          required
+        />
+        <p className="mt-1 text-xs text-muted">
+          تغييره يغيّر الكود الذي يدخل به طالباتك الجدد — الطالبات المسجلات
+          سابقًا يكملن بكوداهن الخاص.
+        </p>
+      </div>
+
+      {error && (
+        <p className="rounded-2xl border border-dusty/50 bg-blush px-4 py-2 text-sm text-deep">
+          {error}
+        </p>
+      )}
+      {done && (
+        <p className="rounded-2xl border border-dusty/40 bg-powder/60 px-4 py-2 text-sm text-deep">
+          تم تغيير الكود بنجاح
+        </p>
+      )}
+
+      <button type="submit" className="btn-ghost" disabled={pending}>
+        {pending ? "جارٍ الحفظ…" : "تغيير الكود"}
       </button>
     </form>
   );

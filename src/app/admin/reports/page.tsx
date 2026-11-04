@@ -1,16 +1,16 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/permissions";
+import { requireTeacher } from "@/lib/permissions";
 import { getStudents, getRecitationIndex, getAllHadiths } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminReportsPage() {
-  await requireAdmin();
+  const { teacher } = await requireTeacher();
 
   const [students, recitationIndex, hadiths] = await Promise.all([
-    getStudents(),
-    getRecitationIndex(),
-    getAllHadiths(),
+    getStudents(teacher.id),
+    getRecitationIndex(teacher.id),
+    getAllHadiths(teacher.id),
   ]);
   const total = hadiths.length || 42;
 

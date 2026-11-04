@@ -1,11 +1,15 @@
-import { requireAdmin } from "@/lib/permissions";
-import { ChangePasswordForm, UpdateProfileForm } from "@/components/admin/account-forms";
+import { requireTeacher } from "@/lib/permissions";
+import {
+  ChangePasswordForm,
+  ChangeCodeForm,
+  UpdateProfileForm,
+} from "@/components/admin/account-forms";
 import { SmallFlower } from "@/components/floral";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminAccountPage() {
-  const me = await requireAdmin();
+  const { user: me, teacher } = await requireTeacher();
 
   return (
     <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
@@ -15,30 +19,33 @@ export default async function AdminAccountPage() {
           <h2 className="font-display text-2xl text-deep">حساب المعلمة</h2>
         </div>
         <p className="mt-1 text-sm text-muted">
-          بيانات حسابكِ — صلاحية الإدارة والتعديل مرتبطة بهذا الحساب.
+          بيانات مساحتك — صلاحية الإدارة والتعديل مرتبطة بكودك هذا، وكل طالباتك
+          وأحاديثك وتقاريرك منفصلة تمامًا عن أي معلمة أخرى.
         </p>
 
         <dl className="mt-5 space-y-2 text-sm">
           <div className="flex justify-between rounded-2xl bg-blush/50 px-4 py-3">
-            <dt className="text-muted">اسم المستخدم</dt>
+            <dt className="text-muted">كود المعلمة</dt>
             <dd className="text-deep" dir="ltr">
-              {me.username ?? "—"}
+              {teacher.code}
             </dd>
           </div>
           <div className="flex justify-between rounded-2xl bg-blush/50 px-4 py-3">
-            <dt className="text-muted">البريد الإلكتروني</dt>
-            <dd className="text-deep" dir="ltr">
-              {me.email}
-            </dd>
+            <dt className="text-muted">الاسم</dt>
+            <dd className="text-deep">{teacher.name}</dd>
           </div>
           <div className="flex justify-between rounded-2xl bg-blush/50 px-4 py-3">
             <dt className="text-muted">الصلاحية</dt>
-            <dd className="text-deep">معلمة (مديرة الموقع)</dd>
+            <dd className="text-deep">معلمة (مالكة هذه المساحة)</dd>
           </div>
         </dl>
 
         <div className="mt-6">
           <UpdateProfileForm name={me.name} />
+        </div>
+
+        <div className="mt-6">
+          <ChangeCodeForm currentCode={teacher.code} />
         </div>
       </section>
 

@@ -1,4 +1,5 @@
 import { getRegistrationSettings, getStudents } from "@/lib/queries";
+import { requireTeacher } from "@/lib/permissions";
 import { RegistrationManager } from "@/components/admin/registration-manager";
 import { StudentCreateForm } from "@/components/admin/student-create-form";
 import { StudentRow } from "@/components/admin/student-row";
@@ -7,9 +8,10 @@ import { SmallFlower } from "@/components/floral";
 export const dynamic = "force-dynamic";
 
 export default async function AdminStudentsPage() {
+  const { teacher } = await requireTeacher();
   const [students, registration] = await Promise.all([
-    getStudents(),
-    getRegistrationSettings(),
+    getStudents(teacher.id),
+    getRegistrationSettings(teacher.id),
   ]);
 
   return (
@@ -18,14 +20,15 @@ export default async function AdminStudentsPage() {
         <StudentCreateForm />
         <RegistrationManager
           enabled={registration.enabled}
-          code={registration.code}
+          teacherCode={teacher.code}
         />
       </div>
 
       <section className="card card-pad">
-        <h2 className="font-display text-xl text-deep">الطالبات المسجلات</h2>
+        <h2 className="font-display text-xl text-deep">طالبات فصلك</h2>
         <p className="mt-1 text-sm text-muted">
-          هذه الأسماء لا تظهر للزوار، وكل طالبة ترى ملفها الخاص فقط.
+          هذه الأسماء لا تظهر للزوار ولا لأي معلمة أخرى، وكل طالبة ترى ملفها
+          الخاص فقط.
         </p>
 
         {students.length === 0 ? (
@@ -35,10 +38,11 @@ export default async function AdminStudentsPage() {
             {students.map((s) => (
               <StudentRow
                 key={s.id}
+                teacherCode={teacher.code}
                 student={{
                   id: s.id,
                   displayName: s.displayName,
-                  username: s.username,
+                  loginCode: s.loginCode,
                   phone: s.phone,
                   competitionOptIn: s.competitionOptIn,
                 }}

@@ -6,9 +6,13 @@
  * hadiths so the UI can be explored.
  *
  * The teacher account is NOT created by default any more — a fresh install
- * shows the first-run setup screen at /setup. To provision the teacher
- * headlessly (CI / scripted deploys) set all three of:
- *   SEED_ADMIN=true ADMIN_USERNAME=... ADMIN_EMAIL=... ADMIN_PASSWORD=...
+ * shows the first-run setup screen at /setup. To provision the first teacher
+ * headlessly (CI / scripted deploys) set:
+ *   SEED_ADMIN=true ADMIN_CODE=... ADMIN_PASSWORD=...
+ *
+ * Every teacher owns a fully separate space (her hadiths, her students, her
+ * recitations, reports and honors). Additional teachers open their own space
+ * from /register with a code of their choosing.
  *
  * Against Neon (DATABASE_URL set) no demo students are created unless you
  * pass SEED_DEMO_STUDENTS=true.
@@ -43,9 +47,7 @@ async function main() {
     console.log("   افتحي الموقع — ستظهر شاشة الإعداد الأولى (/setup) لإنشاء الحساب.");
     console.log("");
     console.log("   أو أنشئيه من سطر الأوامر:");
-    console.log(
-      "   SEED_ADMIN=true ADMIN_USERNAME=admin ADMIN_EMAIL=admin@refqah.local \\"
-    );
+    console.log("   SEED_ADMIN=true ADMIN_CODE=TCH-XXXXXX \\");
     console.log("   ADMIN_PASSWORD=<كلمة-مرور-قوية> npm run seed");
   } else {
     console.log("   ✅ يوجد حساب معلمة — يمكن الدخول من /login");

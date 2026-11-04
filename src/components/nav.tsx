@@ -19,7 +19,6 @@ export function Nav({ user }: { user: NavUser }) {
 
   const links: LinkDef[] = [
     { href: "/", label: "الرئيسية" },
-    { href: "/hadiths", label: "رحلة الحفظ" },
     { href: "/leaderboard", label: "المنافسة" },
   ];
 

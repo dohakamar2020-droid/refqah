@@ -16,9 +16,8 @@ export function SetupForm() {
       const res = await setupAdmin(formData);
       if (res.ok) {
         setDone(true);
-        // Give the server a moment, then send the teacher to the login page.
         setTimeout(() => {
-          router.push("/login");
+          router.push("/admin");
           router.refresh();
         }, 1200);
       } else {
@@ -37,32 +36,21 @@ export function SetupForm() {
       </div>
 
       <div>
-        <label className="label" htmlFor="username">
-          اسم المستخدم
+        <label className="label" htmlFor="code">
+          كود المعلمة
         </label>
         <input
-          id="username"
-          name="username"
+          id="code"
+          name="code"
           dir="ltr"
-          className="field"
-          placeholder="admin"
+          className="field text-center tracking-[0.15em]"
+          placeholder="TCH-XXXXXX"
+          autoComplete="off"
           required
         />
-        <p className="mt-1 text-xs text-muted">٣ أحرف على الأقل</p>
-      </div>
-
-      <div>
-        <label className="label" htmlFor="email">
-          البريد الإلكتروني (اختياري)
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          dir="ltr"
-          className="field"
-          placeholder="name@example.com"
-        />
+        <p className="mt-1 text-xs text-muted">
+          بهذا الكود تدخلين، وبه ينضم طالباتك إلى فصلك — احفظيه جيدًا
+        </p>
       </div>
 
       <div>
@@ -77,9 +65,7 @@ export function SetupForm() {
           className="field"
           required
         />
-        <p className="mt-1 text-xs text-muted">
-          ٨ أحرف على الأقل — سيُطلب منكِ استخدامها عند كل دخول
-        </p>
+        <p className="mt-1 text-xs text-muted">٨ أحرف على الأقل</p>
       </div>
 
       <div>
@@ -103,12 +89,12 @@ export function SetupForm() {
       )}
       {done && (
         <p className="rounded-2xl border border-dusty/40 bg-powder/60 px-4 py-2 text-sm text-deep">
-          تم إنشاء الحساب.. جارٍ تحويلكِ إلى صفحة الدخول
+          تم إنشاء المساحة.. جارٍ تحويلكِ إلى لوحة المعلمة
         </p>
       )}
 
       <button type="submit" className="btn-primary w-full" disabled={pending || done}>
-        {pending ? "جارٍ الإنشاء…" : done ? "تم ✓" : "إنشاء حساب المعلمة"}
+        {pending ? "جارٍ الإنشاء…" : done ? "تم ✓" : "إنشاء مساحة المعلمة"}
       </button>
     </form>
   );

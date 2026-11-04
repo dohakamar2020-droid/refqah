@@ -4,6 +4,7 @@ import { eq, sql, desc, asc, and, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   hadith,
+  teacher,
   student,
   user,
   recitation,
@@ -15,6 +16,10 @@ import {
 import { ensureReady } from "@/lib/db/ready";
 
 const TOTAL_HADITHS = 42;
+
+/* ────────────────────────────────
+ * Hadiths — one copy per teacher
+ * ──────────────────────────────── */
 
 export type HadithRow = {
   id: string;
@@ -28,7 +33,7 @@ export type HadithRow = {
   publishedAt: Date | null;
 };
 
-export async function getAllHadiths(): Promise<HadithRow[]> {
+export async function getAllHadiths(teacherId: string): Promise<HadithRow[]> {
   await ensureReady();
   return db
     .select({
@@ -43,17 +48,18 @@ export async function getAllHadiths(): Promise<HadithRow[]> {
       publishedAt: hadith.publishedAt,
     })
     .from(hadith)
+    .where(eq(hadith.teacherId, teacherId))
     .orderBy(asc(hadith.order));
 }
 
-export async function getPublishedHadiths(): Promise<HadithRow[]> {
-  const all = await getAllHadiths();
+export async function getPublishedHadiths(teacherId: string): Promise<HadithRow[]> {
+  const all = await getAllHadiths(teacherId);
   return all.filter((h) => h.published);
 }
 
-/** «الحديث المنشور حالياً: X من 42» */
-export async function getJourneyProgress() {
-  const all = await getAllHadiths();
+/** «الحديث المنشور حالياً: X من 42» — for one teacher's journey. */
+export async function getJourneyProgress(teacherId: string) {
+  const all = await getAllHadiths(teacherId);
   const published = all.filter((h) => h.published);
   const current = published.length ? published[published.length - 1] : null;
   return {
@@ -64,23 +70,30 @@ export async function getJourneyProgress() {
   };
 }
 
+/* ────────────────────────────────
+ * Students — within one teacher's space
+ * ──────────────────────────────── */
+
 export type StudentRow = {
   id: string;
   userId: string;
   displayName: string;
+  /** كود دخول الطالبة — تعرضه المعلمة لها */
+  loginCode: string | null;
   phone: string | null;
   competitionOptIn: boolean;
   email: string;
   username: string | null;
 };
 
-export async function getStudents(): Promise<StudentRow[]> {
+export async function getStudents(teacherId: string): Promise<StudentRow[]> {
   await ensureReady();
   return db
     .select({
       id: student.id,
       userId: student.userId,
       displayName: student.displayName,
+      loginCode: student.loginCode,
       phone: student.phone,
       competitionOptIn: student.competitionOptIn,
       email: user.email,
@@ -88,20 +101,32 @@ export async function getStudents(): Promise<StudentRow[]> {
     })
     .from(student)
     .innerJoin(user, eq(user.id, student.userId))
+    .where(eq(student.teacherId, teacherId))
     .orderBy(asc(student.displayName));
 }
 
-/** studentId -> Set<hadithId> of approved recitations (published hadiths only). */
-export async function getRecitationIndex() {
+/** One student of this teacher (null when she belongs to another class). */
+export async function getStudentOfTeacher(teacherId: string, studentId: string) {
+  await ensureReady();
+  const [row] = await db
+    .select()
+    .from(student)
+    .where(and(eq(student.id, studentId), eq(student.teacherId, teacherId)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** studentId -> Set<hadithId> of approved recitations, for one class only. */
+export async function getRecitationIndex(teacherId: string) {
   await ensureReady();
   const rows = await db
     .select({
       studentId: recitation.studentId,
       hadithId: recitation.hadithId,
-      recited: recitation.recited,
     })
     .from(recitation)
-    .where(eq(recitation.recited, true));
+    .innerJoin(student, eq(student.id, recitation.studentId))
+    .where(and(eq(recitation.recited, true), eq(student.teacherId, teacherId)));
   const index = new Map<string, Set<string>>();
   for (const r of rows) {
     let set = index.get(r.studentId);
@@ -123,7 +148,7 @@ export type StudentProgress = {
   lastUpdate: Date | null;
 };
 
-/** Full progress for one student (teacher may request any student). */
+/** Full progress for one student (teacher may request any student of hers). */
 export async function getStudentProgress(
   studentId: string
 ): Promise<StudentProgress | null> {
@@ -132,7 +157,9 @@ export async function getStudentProgress(
     .select({
       id: student.id,
       userId: student.userId,
+      teacherId: student.teacherId,
       displayName: student.displayName,
+      loginCode: student.loginCode,
       phone: student.phone,
       competitionOptIn: student.competitionOptIn,
       email: user.email,
@@ -153,9 +180,11 @@ export async function getStudentProgress(
     .from(recitation)
     .where(and(eq(recitation.studentId, studentId), eq(recitation.recited, true)));
 
-  const allHadiths = await getAllHadiths();
+  const allHadiths = await getAllHadiths(row.teacherId ?? "");
   const total = allHadiths.length || TOTAL_HADITHS;
-  const recitedHadithIds = new Set(recs.map((r) => r.hadithId));
+  const recitedHadithIds = new Set(
+    recs.filter((r) => allHadiths.some((h) => h.id === r.hadithId)).map((r) => r.hadithId)
+  );
   const lastUpdate =
     recs.length === 0
       ? null
@@ -165,7 +194,16 @@ export async function getStudentProgress(
         );
 
   return {
-    student: row,
+    student: {
+      id: row.id,
+      userId: row.userId,
+      displayName: row.displayName,
+      loginCode: row.loginCode,
+      phone: row.phone,
+      competitionOptIn: row.competitionOptIn,
+      email: row.email,
+      username: row.username,
+    },
     recitedCount: recitedHadithIds.size,
     total,
     percent: Math.round((recitedHadithIds.size / total) * 100),
@@ -173,6 +211,10 @@ export async function getStudentProgress(
     lastUpdate,
   };
 }
+
+/* ────────────────────────────────
+ * Competition (per teacher)
+ * ──────────────────────────────── */
 
 export type LeaderboardEntry = {
   studentId: string;
@@ -182,16 +224,16 @@ export type LeaderboardEntry = {
 };
 
 /**
- * «سابقوا إلى الخيرات» — أفضل 3 من الطالبات الموافقات على الظهور فقط.
+ * «سابقوا إلى الخيرات» — أفضل 3 من طالبات معلمة واحدة فقط.
  * Tie-break: whoever reached that count first (earliest last approval).
- * Returns [] when the competition switch is off.
+ * Returns [] when that teacher's competition switch is off.
  */
-export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+export async function getLeaderboard(teacherId: string): Promise<LeaderboardEntry[]> {
   await ensureReady();
   const [settings] = await db
     .select()
     .from(competitionSettings)
-    .where(eq(competitionSettings.id, "main"))
+    .where(eq(competitionSettings.id, teacherId))
     .limit(1);
   if (!settings?.enabled) return [];
 
@@ -207,7 +249,7 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
       recitation,
       and(eq(recitation.studentId, student.id), eq(recitation.recited, true))
     )
-    .where(eq(student.competitionOptIn, true))
+    .where(and(eq(student.competitionOptIn, true), eq(student.teacherId, teacherId)))
     .groupBy(student.id, student.displayName)
     .orderBy(desc(sql`count(*)`), asc(sql`max(${recitation.recitedAt})`))
     .limit(3);
@@ -222,19 +264,21 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
 
 export type RegistrationState = {
   enabled: boolean;
-  /** كود الانضمام — null يعني أن التسجيل مفتوح لمن يعرف الرابط */
+  /** @deprecated the teacher code is the join code now */
   code: string | null;
   updatedAt: Date | null;
 };
 
-/** Self-registration settings (cached per request). */
+/** Self-registration settings for one teacher (cached per request). */
 export const getRegistrationSettings = cache(
-  async function getRegistrationSettings(): Promise<RegistrationState> {
+  async function getRegistrationSettings(
+    teacherId: string
+  ): Promise<RegistrationState> {
     await ensureReady();
     const [row] = await db
       .select()
       .from(registrationSettings)
-      .where(eq(registrationSettings.id, "main"))
+      .where(eq(registrationSettings.id, teacherId))
       .limit(1);
     return {
       enabled: row?.enabled ?? false,
@@ -244,15 +288,19 @@ export const getRegistrationSettings = cache(
   }
 );
 
-export async function getCompetitionEnabled(): Promise<boolean> {
+export async function getCompetitionEnabled(teacherId: string): Promise<boolean> {
   await ensureReady();
   const [settings] = await db
     .select()
     .from(competitionSettings)
-    .where(eq(competitionSettings.id, "main"))
+    .where(eq(competitionSettings.id, teacherId))
     .limit(1);
   return settings?.enabled ?? false;
 }
+
+/* ────────────────────────────────
+ * Honors & messages (per teacher)
+ * ──────────────────────────────── */
 
 export type HonorRow = {
   id: string;
@@ -265,7 +313,7 @@ export type HonorRow = {
   hadithTitle: string | null;
 };
 
-export async function getHonors(): Promise<HonorRow[]> {
+export async function getHonors(teacherId: string): Promise<HonorRow[]> {
   await ensureReady();
   const rows = await db
     .select({
@@ -281,49 +329,54 @@ export async function getHonors(): Promise<HonorRow[]> {
     .from(achievement)
     .innerJoin(student, eq(student.id, achievement.studentId))
     .leftJoin(hadith, eq(hadith.id, achievement.hadithId))
+    .where(eq(student.teacherId, teacherId))
     .orderBy(desc(achievement.awardedAt));
   return rows;
 }
 
-/** «سَابِقَةُ الخَيْرَات» badge for the current first-hadith winner. */
-export async function getSabiqah(): Promise<HonorRow | null> {
-  const honors = await getHonors();
+/** «سَابِقَةُ الخَيْرَات» badge for the current first-hadith winner of a class. */
+export async function getSabiqah(teacherId: string): Promise<HonorRow | null> {
+  const honors = await getHonors(teacherId);
   return honors.find((h) => h.title === "سَابِقَةُ الخَيْرَات") ?? null;
 }
 
 export type MessageRow = { id: string; text: string; category: string | null };
 
-export async function getMessages(): Promise<MessageRow[]> {
+export async function getMessages(teacherId: string): Promise<MessageRow[]> {
   await ensureReady();
   return db
     .select({ id: message.id, text: message.text, category: message.category })
     .from(message)
-    .where(eq(message.active, true));
+    .where(and(eq(message.active, true), eq(message.teacherId, teacherId)));
 }
 
 /** Pick a random message, avoiding the ones already shown in this session. */
 export async function getRandomMessage(
+  teacherId: string,
   excludeIds: string[] = []
 ): Promise<MessageRow | null> {
-  const all = await getMessages();
+  const all = await getMessages(teacherId);
   if (all.length === 0) return null;
   const pool = all.filter((m) => !excludeIds.includes(m.id));
   const from = pool.length > 0 ? pool : all; // once seen all, start over
   return from[Math.floor(Math.random() * from.length)];
 }
 
-/** Last change to any recitation — shown in the teacher dashboard. */
-export async function getLastRecitationUpdate(): Promise<Date | null> {
+/** Last change to any recitation in this class — teacher dashboard. */
+export async function getLastRecitationUpdate(
+  teacherId: string
+): Promise<Date | null> {
   await ensureReady();
   const [row] = await db
     .select({ updatedAt: sql<Date | null>`max(${recitation.updatedAt})` })
     .from(recitation)
-    .where(eq(recitation.recited, true));
+    .innerJoin(student, eq(student.id, recitation.studentId))
+    .where(and(eq(recitation.recited, true), eq(student.teacherId, teacherId)));
   return row?.updatedAt ?? null;
 }
 
-/** Per-hadith counts for the teacher dashboard (no student totals exposed). */
-export async function getHadithStats() {
+/** Per-hadith counts for one teacher's dashboard (no student totals exposed). */
+export async function getHadithStats(teacherId: string) {
   await ensureReady();
   return db
     .select({
@@ -331,22 +384,15 @@ export async function getHadithStats() {
       count: sql<number>`count(*)::int`,
     })
     .from(recitation)
-    .where(eq(recitation.recited, true))
+    .innerJoin(student, eq(student.id, recitation.studentId))
+    .innerJoin(hadith, eq(hadith.id, recitation.hadithId))
+    .where(and(eq(recitation.recited, true), eq(hadith.teacherId, teacherId)))
     .groupBy(recitation.hadithId);
 }
 
-/**
- * Has the first-run setup been completed?
- * Cached per request — it is read by the header, the home page and /login.
- */
-export const hasAdmin = cache(async function hasAdmin(): Promise<boolean> {
-  await ensureReady();
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(user)
-    .where(eq(user.role, "admin"));
-  return (row?.n ?? 0) > 0;
-});
+/* ────────────────────────────────
+ * Reports
+ * ──────────────────────────────── */
 
 export type StudentReport = {
   studentId: string;
@@ -366,6 +412,7 @@ export type StudentReport = {
 
 /** Everything the shareable progress report needs. Teacher-only. */
 export async function getStudentReport(
+  teacherId: string,
   studentId: string
 ): Promise<StudentReport | null> {
   await ensureReady();
@@ -377,13 +424,14 @@ export async function getStudentReport(
       phone: student.phone,
     })
     .from(student)
-    .where(eq(student.id, studentId))
+    .where(and(eq(student.id, studentId), eq(student.teacherId, teacherId)))
     .limit(1);
   if (!row) return null;
 
-  const allHadiths = await getAllHadiths();
+  const allHadiths = await getAllHadiths(teacherId);
   const total = allHadiths.length || TOTAL_HADITHS;
   const publishedCount = allHadiths.filter((h) => h.published).length;
+  const classHadithIds = new Set(allHadiths.map((h) => h.id));
 
   const recs = await db
     .select({
@@ -393,7 +441,9 @@ export async function getStudentReport(
     .from(recitation)
     .where(and(eq(recitation.studentId, studentId), eq(recitation.recited, true)));
 
-  const recitedSet = new Set(recs.map((r) => r.hadithId));
+  const recitedSet = new Set(
+    recs.filter((r) => classHadithIds.has(r.hadithId)).map((r) => r.hadithId)
+  );
   const byId = new Map(allHadiths.map((h) => [h.id, h.order]));
 
   const recentHadiths = recs
@@ -416,7 +466,9 @@ export async function getStudentReport(
           null
         );
 
-  const honors = (await getHonors()).filter((h) => h.studentId === studentId);
+  const honors = (await getHonors(teacherId)).filter(
+    (h) => h.studentId === studentId
+  );
 
   return {
     studentId: row.id,
@@ -431,11 +483,21 @@ export async function getStudentReport(
     recentHadiths,
     honors: honors.map((h) => ({ title: h.title, description: h.description })),
     isSabiqah: honors.some((h) => h.title === "سَابِقَةُ الخَيْرَات"),
-    message: (await getRandomMessage())?.text ?? null,
+    message: (await getRandomMessage(teacherId))?.text ?? null,
   };
 }
 
-export async function getStudentsByIds(ids: string[]) {
+export async function getTeacherName(teacherId: string) {
+  await ensureReady();
+  const [row] = await db
+    .select({ name: teacher.name, code: teacher.code })
+    .from(teacher)
+    .where(eq(teacher.id, teacherId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getStudentsByIds(teacherId: string, ids: string[]) {
   if (ids.length === 0) return [];
   await ensureReady();
   return db
@@ -449,5 +511,30 @@ export async function getStudentsByIds(ids: string[]) {
     })
     .from(student)
     .innerJoin(user, eq(user.id, student.userId))
-    .where(inArray(student.id, ids));
+    .where(and(inArray(student.id, ids), eq(student.teacherId, teacherId)));
+}
+
+/* ────────────────────────────────
+ * Installation flags
+ * ──────────────────────────────── */
+
+/**
+ * Public "classes" overview for the landing page: one card per teacher space,
+ * with her display name + code + published progress. No student names, ever.
+ */
+export async function getPublicClasses() {
+  await ensureReady();
+  return db
+    .select({
+      teacherId: teacher.id,
+      name: teacher.name,
+      code: teacher.code,
+      publishedCount: sql<number>`count(*) filter (where ${hadith.published} = true)::int`,
+      total: sql<number>`count(*)::int`,
+      updatedAt: teacher.createdAt,
+    })
+    .from(teacher)
+    .leftJoin(hadith, eq(hadith.teacherId, teacher.id))
+    .groupBy(teacher.id, teacher.name, teacher.code, teacher.createdAt)
+    .orderBy(asc(teacher.createdAt));
 }

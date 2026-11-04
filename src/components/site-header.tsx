@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { getSessionUser } from "@/lib/permissions";
-import { hasAdmin } from "@/lib/queries";
+import { hasAnyTeacher } from "@/lib/db/seed";
+import { ensureReady } from "@/lib/db/ready";
+import { isBuildPhase } from "@/lib/build-phase";
 import { LogoMark } from "@/components/floral";
 import { Nav } from "@/components/nav";
 import { LogoutButton } from "@/components/logout-button";
 
 export async function SiteHeader() {
-  const [me, configured] = await Promise.all([getSessionUser(), hasAdmin()]);
+  const [me, configured] = isBuildPhase()
+    ? [null, false]
+    : await (async () => {
+        await ensureReady();
+        return Promise.all([getSessionUser(), hasAnyTeacher()]);
+      })();
   // Fresh installation → the entry point is the first-run setup screen.
   const authHref = configured ? "/login" : "/setup";
 

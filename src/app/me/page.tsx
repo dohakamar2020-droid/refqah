@@ -30,14 +30,16 @@ export default async function MePage() {
   // Server-side guard: a student can only ever load her own profile.
   const { student } = await requireStudent();
 
+  const teacherId = student.teacherId ?? "";
+
   const [progress, allHadiths, honors, messages, initialMessage, competitionOn] =
     await Promise.all([
       getStudentProgress(student.id),
-      getAllHadiths(),
-      getHonors(),
-      getMessages(),
-      getRandomMessage(),
-      getCompetitionEnabled(),
+      getAllHadiths(teacherId),
+      getHonors(teacherId),
+      getMessages(teacherId),
+      getRandomMessage(teacherId),
+      getCompetitionEnabled(teacherId),
     ]);
 
   if (!progress) {

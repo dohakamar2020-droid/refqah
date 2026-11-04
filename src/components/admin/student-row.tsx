@@ -2,21 +2,28 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { deleteStudent, updateStudent } from "@/lib/actions";
+import { deleteStudent, rotateStudentCode, updateStudent } from "@/lib/actions";
 import { SmallFlower } from "@/components/floral";
 
 type StudentItem = {
   id: string;
   displayName: string;
-  username: string | null;
+  loginCode: string | null;
   phone: string | null;
   competitionOptIn: boolean;
 };
 
-export function StudentRow({ student }: { student: StudentItem }) {
+export function StudentRow({
+  student,
+  teacherCode,
+}: {
+  student: StudentItem;
+  teacherCode: string;
+}) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState(student.loginCode);
   const [pending, startTransition] = useTransition();
 
   function onUpdate(formData: FormData) {
@@ -37,6 +44,15 @@ export function StudentRow({ student }: { student: StudentItem }) {
     });
   }
 
+  function onRotate() {
+    setError(null);
+    startTransition(async () => {
+      const res = await rotateStudentCode(student.id);
+      if (res.ok && res.code) setCode(res.code);
+      else if (!res.ok) setError(res.error ?? "تعذّر توليد كود جديد");
+    });
+  }
+
   return (
     <li className="rounded-card border border-powder bg-white/70 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -47,7 +63,7 @@ export function StudentRow({ student }: { student: StudentItem }) {
           <div>
             <p className="font-medium text-deep">{student.displayName}</p>
             <p className="text-xs text-muted" dir="ltr">
-              {student.username ?? "—"}
+              {code ?? "—"}
               {student.phone ? ` · ${student.phone}` : ""}
             </p>
           </div>
@@ -81,6 +97,34 @@ export function StudentRow({ student }: { student: StudentItem }) {
             حذف
           </button>
         </div>
+      </div>
+
+      <div className="mt-3 rounded-2xl bg-blush/40 px-4 py-3 text-xs text-muted">
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>
+            دخولها باسم <span className="text-deep">«{student.displayName}»</span>
+          </span>
+          <span>
+            وكود المعلمة{" "}
+            <span dir="ltr" className="text-deep">
+              {teacherCode}
+            </span>
+          </span>
+          <span>
+            — أو بكودها الخاص{" "}
+            <span dir="ltr" className="text-deep">
+              {code ?? "—"}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={onRotate}
+            disabled={pending}
+            className="text-deep underline decoration-dusty underline-offset-4"
+          >
+            توليد كود جديد
+          </button>
+        </p>
       </div>
 
       {confirming && (

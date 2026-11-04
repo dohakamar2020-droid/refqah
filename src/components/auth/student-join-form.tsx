@@ -20,7 +20,7 @@ export function StudentJoinForm() {
         setBusy(false);
         return;
       }
-      router.push("/me");
+      router.push("/student");
       router.refresh();
     });
   }

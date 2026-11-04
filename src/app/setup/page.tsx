@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function SetupPage() {
   await ensureReady();
   // Already configured → the setup screen must disappear.
-  if (await hasAnyTeacher()) redirect("/login");
+  if (await hasAnyTeacher()) redirect("/teacher/login");
 
   return (
     <div className="relative mx-auto max-w-md px-4 py-14 sm:px-6">

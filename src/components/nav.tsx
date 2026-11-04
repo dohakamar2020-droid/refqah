@@ -17,13 +17,19 @@ export function Nav({ user }: { user: NavUser }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  const links: LinkDef[] = [
-    { href: "/", label: "الرئيسية" },
-    { href: "/leaderboard", label: "المنافسة" },
-  ];
+  // Students and teachers never share a menu: a student sees her own pages,
+  // a teacher sees her dashboard, and neither sees the other's.
+  const links: LinkDef[] = [];
 
-  if (user.isStudent) links.push({ href: "/me", label: "حسابي" });
-  if (user.isAdmin) links.push({ href: "/admin", label: "لوحة المعلمة" });
+  if (user.isStudent) {
+    links.push({ href: "/student", label: "حسابي" });
+    links.push({ href: "/leaderboard", label: "المنافسة" });
+  } else if (user.isAdmin) {
+    links.push({ href: "/admin", label: "لوحة المعلمة" });
+    links.push({ href: "/leaderboard", label: "المنافسة" });
+  } else {
+    links.push({ href: "/", label: "الرئيسية" });
+  }
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);

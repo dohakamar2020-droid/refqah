@@ -4,6 +4,7 @@ import { requireTeacher } from "@/lib/permissions";
 import { getStudentReport } from "@/lib/queries";
 import { ReportCard } from "@/components/report/report-card";
 import { ReportShareBar } from "@/components/report/report-share-bar";
+import { CorrectionSender } from "@/components/admin/student-row";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,7 @@ export default async function StudentReportPage({
   const dateLabel = formatDate(new Date());
   const textMessage = buildTextMessage(data);
   const slug = data.displayName.replace(/\s+/g, "-");
+  const phone = data.phone ?? null;
 
   return (
     <div className="space-y-8">
@@ -72,6 +74,17 @@ export default async function StudentReportPage({
         fileName={`refqah-report-${slug}.png`}
         phone={data.phone}
         textMessage={textMessage}
+      />
+
+      <CorrectionSender
+        className={teacher.name}
+        students={[
+          {
+            id: data.studentId,
+            displayName: data.displayName,
+            phone: data.phone ?? null,
+          },
+        ]}
       />
 
       {!data.phone && (

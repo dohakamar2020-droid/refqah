@@ -213,12 +213,3 @@ export async function getTeacherPublicInfo(teacherId: string) {
     .limit(1);
   return row ?? null;
 }
-
-/**
- * Resolve the class shown to visitors: «كود المعلمة» in the URL.
- * A wrong or empty code simply yields null (the page shows the lookup form).
- */
-export async function resolveClass(rawCode: string | undefined) {
-  if (!rawCode) return null;
-  return getTeacherByCode(rawCode);
-}

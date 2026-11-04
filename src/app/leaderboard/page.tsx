@@ -1,21 +1,27 @@
 import { redirect } from "next/navigation";
-import { getClassForRequest } from "@/lib/class-context";
-import { getLeaderboard, getCompetitionEnabled } from "@/lib/queries";
+import { getSessionUser } from "@/lib/permissions";
+import { getLeaderboard, getCompetitionEnabled, getMyClass } from "@/lib/queries";
 import { OrnamentDivider, SmallFlower } from "@/components/floral";
-import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 const RANKS = ["الأول", "الثاني", "الثالث"];
 
-/** «أفضل 3» — inside one class only, and only when its switch is on. */
+/**
+ * «أفضل 3» — داخل فصل الطالبة فقط، وبأسماء العرض وبموافقتهنّ.
+ * لا تعرض أي كود فصل ولا أسماء معلمات، ولا تُقارن طالبات فصل بفصل آخر.
+ */
 export default async function LeaderboardPage() {
-  const klass = await getClassForRequest();
-  if (!klass) redirect("/");
+  const me = await getSessionUser();
+  if (!me) redirect("/student/login");
 
-  const [enabled, entries] = await Promise.all([
-    getCompetitionEnabled(klass.id),
-    getLeaderboard(klass.id),
+  const teacherId = me.teacherId;
+  if (!teacherId) redirect(me.role === "admin" ? "/admin" : "/student");
+
+  const [enabled, entries, klass] = await Promise.all([
+    getCompetitionEnabled(teacherId),
+    getLeaderboard(teacherId),
+    getMyClass(teacherId),
   ]);
 
   return (
@@ -25,11 +31,15 @@ export default async function LeaderboardPage() {
         <h1 className="mt-4 font-display text-3xl text-deep sm:text-4xl">
           أفضل ثلاث مشاركات
         </h1>
-        <p className="mt-1 text-xs text-muted">فصل {klass.name}</p>
+        {klass && (
+          <p className="mt-1 text-xs text-muted">
+            {me.role === "admin"
+              ? "من طالبات فصلك"
+              : `من فصل ${klass.name}`}
+          </p>
+        )}
         <OrnamentDivider className="mx-auto mt-4 h-6 w-52 text-dusty" />
-        <p className="mt-3 text-sm text-muted">
-          خطوات صغيرة تصنع إنجازات عظيمة
-        </p>
+        <p className="mt-3 text-sm text-muted">خطوات صغيرة تصنع إنجازات عظيمة</p>
       </div>
 
       {!enabled ? (
@@ -50,7 +60,7 @@ export default async function LeaderboardPage() {
             لا توجد مشاركات ظاهرة بعد
           </p>
           <p className="mt-2 text-sm text-muted">
-            تظهر اللوحة طالبات هذا الفصل الموافقات على المشاركة من داخل حساباتهنّ.
+            تظهر اللوحة طالبات فصلك الموافقات على المشاركة من داخل حساباتهنّ.
           </p>
         </div>
       ) : (
@@ -89,12 +99,6 @@ export default async function LeaderboardPage() {
         تُعرض أسماء العرض وعدد الأحاديث المعتمدة فقط، ولا تظهر أي تفاصيل شخصية
         أو سجلات تسميع.
       </p>
-
-      <div className="mt-10 text-center">
-        <Link href={`/c/${klass.code}`} className="btn-ghost">
-          عودي إلى صفحة الفصل
-        </Link>
-      </div>
     </div>
   );
 }

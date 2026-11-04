@@ -2,7 +2,7 @@ import { getRegistrationSettings, getStudents } from "@/lib/queries";
 import { requireTeacher } from "@/lib/permissions";
 import { RegistrationManager } from "@/components/admin/registration-manager";
 import { StudentCreateForm } from "@/components/admin/student-create-form";
-import { StudentRow } from "@/components/admin/student-row";
+import { StudentRow, CorrectionSender } from "@/components/admin/student-row";
 import { SmallFlower } from "@/components/floral";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,16 @@ export default async function AdminStudentsPage() {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,26rem)_1fr] lg:items-start">
       <div className="space-y-6">
         <StudentCreateForm />
+        {students.length > 0 && (
+          <CorrectionSender
+            className={teacher.name}
+            students={students.map((s) => ({
+              id: s.id,
+              displayName: s.displayName,
+              phone: s.phone,
+            }))}
+          />
+        )}
         <RegistrationManager
           enabled={registration.enabled}
           teacherCode={teacher.code}
@@ -27,8 +37,8 @@ export default async function AdminStudentsPage() {
       <section className="card card-pad">
         <h2 className="font-display text-xl text-deep">طالبات فصلك</h2>
         <p className="mt-1 text-sm text-muted">
-          هذه الأسماء لا تظهر للزوار ولا لأي معلمة أخرى، وكل طالبة ترى ملفها
-          الخاص فقط.
+          هذه الأسماء لا تظهر لأي زائر ولا لأي معلمة أخرى، وكل طالبة ترى مساحتها
+          الخاصة فقط.
         </p>
 
         {students.length === 0 ? (

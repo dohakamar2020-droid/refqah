@@ -50,7 +50,7 @@ async function main() {
     console.log("   SEED_ADMIN=true ADMIN_CODE=TCH-XXXXXX \\");
     console.log("   ADMIN_PASSWORD=<كلمة-مرور-قوية> npm run seed");
   } else {
-    console.log("   ✅ يوجد حساب معلمة — يمكن الدخول من /login");
+    console.log("   ✅ يوجد حساب معلمة — الدخول من /teacher/login");
   }
 }
 

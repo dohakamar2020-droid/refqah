@@ -84,6 +84,29 @@ export default async function LeaderboardPage() {
                   {rank === 1 ? "١" : rank === 2 ? "٢" : "٣"}
                 </div>
                 <p className="mt-4 font-medium text-deep">{entry.displayName}</p>
+                {entry.titles.length > 0 && (
+                  <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                    {entry.titles.slice(0, 2).map((t, i) => (
+                      <span
+                        key={`${t.title}-${i}`}
+                        className={
+                          rank === 1
+                            ? "inline-flex items-center rounded-full bg-powder px-3 py-1 font-display text-xs leading-none text-deep border border-dusty/40"
+                            : "inline-flex items-center rounded-full bg-blush/60 px-3 py-1 font-display text-xs leading-none text-deep border border-powder"
+                        }
+                        title={t.hadithName ? `${t.title} — حـ${t.order ?? ""} ${t.hadithName}` : t.title}
+                      >
+                        {t.title}
+                        {t.order ? ` · حـ${t.order}` : ""}
+                      </span>
+                    ))}
+                    {entry.titles.length > 2 && (
+                      <span className="inline-flex items-center rounded-full bg-white px-2 py-1 text-[10px] text-muted border border-powder">
+                        +{entry.titles.length - 2}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <p className="mt-1 font-display text-4xl text-deep nums">
                   {entry.count}
                 </p>
@@ -99,8 +122,8 @@ export default async function LeaderboardPage() {
       )}
 
       <p className="mt-8 text-center text-xs text-muted">
-        تُعرض أسماء العرض وعدد الأحاديث المعتمدة فقط، ولا تظهر أي تفاصيل شخصية
-        أو سجلات تسميع.
+        تُعرض أسماء العرض وعدد الأحاديث المعتمدة وألقاب الأحاديث فقط، ولا تظهر أي
+        تفاصيل شخصية أو سجلات تسميع.
       </p>
     </div>
   );

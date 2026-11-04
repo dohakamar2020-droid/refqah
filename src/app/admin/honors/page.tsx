@@ -86,16 +86,37 @@ export default async function AdminHonorsPage() {
           {competitionOn && leaderboard.length > 0 ? (
             <ol className="mt-3 space-y-2 text-sm">
               {leaderboard.map((e, i) => (
-                <li key={e.studentId} className="flex justify-between">
+                <li key={e.studentId} className="flex items-start justify-between gap-3">
                   <span className="text-ink">
-                    {i + 1}. {e.displayName}
-                    {e.manualRank && (
-                      <span className="mr-2 rounded-full bg-powder px-2 py-0.5 text-[10px] text-deep">
-                        محدَّد منكِ
+                    <span>
+                      {i + 1}. {e.displayName}
+                      {e.manualRank && (
+                        <span className="mr-2 rounded-full bg-powder px-2 py-0.5 text-[10px] text-deep">
+                          محدَّد منكِ
+                        </span>
+                      )}
+                    </span>
+                    {e.titles.length > 0 && (
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {e.titles.slice(0, 2).map((t, j) => (
+                          <span
+                            key={`${t.title}-${j}`}
+                            className="rounded-full bg-white px-2 py-0.5 font-display text-[11px] text-deep border border-powder"
+                            title={t.hadithName ? `حـ${t.order ?? ""} — ${t.hadithName}` : undefined}
+                          >
+                            {t.title}
+                            {t.order ? ` · حـ${t.order}` : ""}
+                          </span>
+                        ))}
+                        {e.titles.length > 2 && (
+                          <span className="rounded-full bg-powder px-2 py-0.5 text-[10px] text-deep">
+                            +{e.titles.length - 2}
+                          </span>
+                        )}
                       </span>
                     )}
                   </span>
-                  <span className="text-muted nums">{e.count} حديثًا</span>
+                  <span className="shrink-0 text-muted nums">{e.count} حديثًا</span>
                 </li>
               ))}
             </ol>

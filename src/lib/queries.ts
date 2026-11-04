@@ -320,6 +320,8 @@ export type LeaderboardEntry = {
   reachedAt: Date | null;
   /** المركز الذي حددته المعلمة بنفسها (1/2/3)، أو null إن كان الترتيب تلقائيًا */
   manualRank?: number | null;
+  /** ألقاب الأحاديث التي حصلت عليها — تُعرض في لوحة المنافسة بجانب الاسم */
+  titles: { title: string; order: number | null; hadithName: string | null }[];
 };
 
 /**
@@ -367,12 +369,47 @@ export async function getLeaderboard(teacherId: string): Promise<LeaderboardEntr
     .filter((r) => r.manualRank)
     .sort((a, b) => (a.manualRank ?? 0) - (b.manualRank ?? 0));
 
-  return [...manual, ...automatic].slice(0, 3).map((r) => ({
+  const top = [...manual, ...automatic].slice(0, 3);
+  const topIds = top.map((r) => r.studentId);
+  const titlesByStudent = new Map<
+    string,
+    { title: string; order: number | null; hadithName: string | null }[]
+  >();
+  if (topIds.length) {
+    const titleRows = await db
+      .select({
+        studentId: hadithTitle.studentId,
+        title: hadithTitle.title,
+        order: hadith.order,
+        hadithName: hadith.title,
+        awardedAt: hadithTitle.awardedAt,
+      })
+      .from(hadithTitle)
+      .leftJoin(hadith, eq(hadith.id, hadithTitle.hadithId))
+      .where(and(eq(hadithTitle.teacherId, teacherId), inArray(hadithTitle.studentId, topIds)));
+    // أحدث لقب أولًا ليظهر فوق البطاقة
+    titleRows.sort((a, b) => {
+      const ta = a.awardedAt ? new Date(a.awardedAt).getTime() : 0;
+      const tb = b.awardedAt ? new Date(b.awardedAt).getTime() : 0;
+      return tb - ta;
+    });
+    for (const r of titleRows) {
+      let arr = titlesByStudent.get(r.studentId);
+      if (!arr) {
+        arr = [];
+        titlesByStudent.set(r.studentId, arr);
+      }
+      arr.push({ title: r.title, order: r.order ?? null, hadithName: r.hadithName ?? null });
+    }
+  }
+
+  return top.map((r) => ({
     studentId: r.studentId,
     displayName: r.displayName,
     count: r.count,
     reachedAt: r.reachedAt ?? null,
     manualRank: r.manualRank ?? null,
+    titles: titlesByStudent.get(r.studentId) ?? [],
   }));
 }
 

@@ -34,7 +34,7 @@ export function LoginForm() {
       const session = await authClient.getSession();
       const role = (session?.data?.user as { role?: string } | undefined)?.role;
 
-      router.push(role === "admin" ? "/admin" : "/me");
+      router.push(role === "admin" ? "/admin" : "/student");
       router.refresh();
     } catch {
       setError("تعذّر تسجيل الدخول، حاولي مرة أخرى");

@@ -113,6 +113,19 @@ CREATE TABLE IF NOT EXISTS "recitation" (
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS "recitation_note" (
+  "id" text PRIMARY KEY NOT NULL,
+  "student_id" text NOT NULL REFERENCES "student"("id") ON DELETE cascade,
+  "hadith_id" text NOT NULL REFERENCES "hadith"("id") ON DELETE cascade,
+  "mistakes" text,
+  "body" text,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "recitation_note_student_hadith_uidx" ON "recitation_note" USING btree ("student_id","hadith_id");
+CREATE INDEX IF NOT EXISTS "recitation_note_student_idx" ON "recitation_note" USING btree ("student_id");
+
 CREATE TABLE IF NOT EXISTS "achievement" (
   "id" text PRIMARY KEY NOT NULL,
   "student_id" text NOT NULL REFERENCES "student"("id") ON DELETE cascade,

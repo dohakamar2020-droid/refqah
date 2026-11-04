@@ -13,6 +13,38 @@ type StudentItem = {
   competitionOptIn: boolean;
 };
 
+/**
+ * رسالة التصحيح الجاهزة على واتساب.
+ *
+ * المعلمة تكتب تصحيح التسميع هنا فيصل للطالبة كنص جاهز، ثم تسجّله الطالبة في
+ * مساحتها لتكون معها عند المراجعة. لا تُحفظ الرسالة في قاعدة البيانات — مجرد
+ * مساعد لصياغتها وإرسالها.
+ */
+function buildCorrectionMessage(
+  name: string,
+  className: string,
+  hadithOrder: string,
+  mistakes: string,
+  notes: string
+) {
+  const lines = [
+    `بسم الله الرحمن الرحيم`,
+    "",
+    `تصحيح تسميع — ${name}`,
+    `فصل ${className}`,
+    hadithOrder ? `الحديث رقم ${hadithOrder}` : "",
+    "",
+    mistakes ? "مواضع الأخطاء:" : "",
+    mistakes,
+    notes ? "" : "",
+    notes ? "ملاحظات:" : "",
+    notes,
+    "",
+    "افتحي مساحتكِ في البرنامج وسجّلي هذه النتيجة لتكون معكِ عند المراجعة.",
+  ];
+  return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function StudentRow({
   student,
   teacherCode,
@@ -198,5 +230,150 @@ export function StudentRow({
 
       {error && <p className="mt-3 text-sm text-deep">{error}</p>}
     </li>
+  );
+}
+
+
+/** بطاقة إرسال التصحيح على واتساب — خاصة بلوحة المعلمة. */
+export function CorrectionSender({
+  students,
+  className,
+}: {
+  students: { id: string; displayName: string; phone: string | null }[];
+  className: string;
+}) {
+  const [studentId, setStudentId] = useState(students[0]?.id ?? "");
+  const [order, setOrder] = useState("");
+  const [mistakes, setMistakes] = useState("");
+  const [notes, setNotes] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const student = students.find((s) => s.id === studentId);
+  const text = student
+    ? buildCorrectionMessage(student.displayName, className, order.trim(), mistakes.trim(), notes.trim())
+    : "";
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Clipboard may be unavailable — she can still select and copy manually.
+    }
+  }
+
+  return (
+    <div className="card card-pad">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="font-display text-xl text-deep">إرسال تصحيح تسميع</h2>
+          <p className="mt-1 text-sm text-muted">
+            اكتبي التصحيح مرة واحدة، وارسليه للطالبة على واتساب، ثم تسجّله هي في
+            مساحتها لتراجع عليه.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="btn-ghost shrink-0 !px-3 !py-1.5 text-xs"
+        >
+          {open ? "إغلاق" : "فتح"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="label" htmlFor="correction-student">
+              الطالبة
+            </label>
+            <select
+              id="correction-student"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              className="field"
+            >
+              {students.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.displayName}
+                  {s.phone ? " — واتساب مسجّل" : " — بدون رقم"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="label" htmlFor="correction-order">
+              رقم الحديث (اختياري)
+            </label>
+            <input
+              id="correction-order"
+              value={order}
+              onChange={(e) => setOrder(e.target.value)}
+              className="field"
+              placeholder="مثال: 5"
+            />
+          </div>
+
+          <div>
+            <label className="label" htmlFor="correction-mistakes">
+              مواضع الأخطاء
+            </label>
+            <textarea
+              id="correction-mistakes"
+              value={mistakes}
+              onChange={(e) => setMistakes(e.target.value)}
+              rows={3}
+              className="field leading-loose"
+              placeholder={"سطر لكل موضع، مثال:\n«صيام رمضان» — نسيتها\n«أنزلناه» — قالت «أنزلنه»"}
+            />
+          </div>
+
+          <div>
+            <label className="label" htmlFor="correction-notes">
+              ملاحظات
+            </label>
+            <textarea
+              id="correction-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="field leading-loose"
+              placeholder="مثال: أرجّع التسميع الأسبوع الجاي وأركّز على آخر ثلاثة أحاديث"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-powder bg-white/60 p-3">
+            <p className="text-[11px] text-muted">سيصل النص بهذا الشكل:</p>
+            <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-ink">
+              {text}
+            </pre>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {student?.phone ? (
+              <a
+                href={`https://wa.me/${student.phone}?text=${encodeURIComponent(text)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary !px-4 !py-2 text-xs"
+              >
+                إرسال على واتساب
+              </a>
+            ) : (
+              <span className="chip bg-blush text-muted">
+                أضيفي رقم واتسابها من التعديل لفتح المحادثة مباشرة
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={copy}
+              className="btn-ghost !px-4 !py-2 text-xs"
+            >
+              نسخ النص
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function JoinPage() {
   const me = await getSessionUser();
-  if (me) redirect(me.role === "admin" ? "/admin" : "/me");
+  if (me) redirect(me.role === "admin" ? "/admin" : "/student");
 
   return (
     <div className="relative mx-auto max-w-md px-4 py-14 sm:px-6">
@@ -30,7 +30,7 @@ export default async function JoinPage() {
         <p className="mt-6 text-center text-xs text-muted">
           معلمتك لم تفتح التسجيل؟ أضيفك بنفسها وتعطيك كودك الخاص.{" "}
           <Link
-            href="/login"
+            href="/student/login"
             className="text-deep underline decoration-dusty underline-offset-4"
           >
             عندي كود بالفعل

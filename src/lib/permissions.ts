@@ -50,10 +50,10 @@ export const getSessionUser = cache(
   }
 );
 
-/** Require any logged-in user, otherwise redirect to /login. */
+/** Require any logged-in user, otherwise redirect to her own sign-in page. */
 export async function requireUser(): Promise<SessionUser> {
   const u = await getSessionUser();
-  if (!u) redirect("/login");
+  if (!u) redirect("/student/login");
   return u;
 }
 
@@ -66,11 +66,12 @@ export async function requireTeacher(): Promise<{
   teacher: typeof teacher.$inferSelect;
 }> {
   const u = await requireUser();
-  if (u.role !== "admin") redirect("/");
+  // Students never reach the teacher side — they go back to their own space.
+  if (u.role !== "admin") redirect("/student");
   const t = await getTeacherByUserId(u.id);
   // The teacher row is created on boot for every admin account; if it is
   // missing something is wrong with the installation, not with her access.
-  if (!t) redirect("/login");
+  if (!t) redirect("/teacher/login");
   return { user: u, teacher: t };
 }
 
@@ -92,7 +93,7 @@ export async function requireStudent(): Promise<{
     .from(student)
     .where(eq(student.userId, u.id))
     .limit(1);
-  if (!profile) redirect("/login");
+  if (!profile) redirect("/student/login");
   return { user: u, student: profile };
 }
 

@@ -8,6 +8,7 @@ import {
   student,
   user,
   recitation,
+  recitationNote,
   achievement,
   competitionSettings,
   registrationSettings,
@@ -487,16 +488,6 @@ export async function getStudentReport(
   };
 }
 
-export async function getTeacherName(teacherId: string) {
-  await ensureReady();
-  const [row] = await db
-    .select({ name: teacher.name, code: teacher.code })
-    .from(teacher)
-    .where(eq(teacher.id, teacherId))
-    .limit(1);
-  return row ?? null;
-}
-
 export async function getStudentsByIds(teacherId: string, ids: string[]) {
   if (ids.length === 0) return [];
   await ensureReady();
@@ -518,23 +509,100 @@ export async function getStudentsByIds(teacherId: string, ids: string[]) {
  * Installation flags
  * ──────────────────────────────── */
 
+
+
+/* ────────────────────────────────
+ * Student's own class view
+ * ──────────────────────────────── */
+
+export type StudentHadithResult = {
+  id: string;
+  order: number;
+  title: string;
+  narrator: string | null;
+  arabicText: string;
+  takhrij: string | null;
+  publishedAt: Date | null;
+  /** معتمدة من المعلمة */
+  recited: boolean;
+  recitedAt: Date | null;
+  /** نتيجة التسميع التي كتبتها الطالبة بنفسها */
+  note: { mistakes: string; body: string; updatedAt: Date } | null;
+};
+
 /**
- * Public "classes" overview for the landing page: one card per teacher space,
- * with her display name + code + published progress. No student names, ever.
+ * ONLY what a student may see of her class: the published hadiths, her own
+ * result for each, and her own notes. Unpublished hadiths do not exist for
+ * her at all — the teacher's unpublished plan stays private.
  */
-export async function getPublicClasses() {
+export async function getStudentClassBoard(
+  teacherId: string,
+  studentId: string
+): Promise<StudentHadithResult[]> {
   await ensureReady();
-  return db
-    .select({
-      teacherId: teacher.id,
-      name: teacher.name,
-      code: teacher.code,
-      publishedCount: sql<number>`count(*) filter (where ${hadith.published} = true)::int`,
-      total: sql<number>`count(*)::int`,
-      updatedAt: teacher.createdAt,
-    })
+  const [published, recs, notes] = await Promise.all([
+    db
+      .select({
+        id: hadith.id,
+        order: hadith.order,
+        title: hadith.title,
+        narrator: hadith.narrator,
+        arabicText: hadith.arabicText,
+        takhrij: hadith.takhrij,
+        publishedAt: hadith.publishedAt,
+      })
+      .from(hadith)
+      .where(and(eq(hadith.teacherId, teacherId), eq(hadith.published, true)))
+      .orderBy(asc(hadith.order)),
+    db
+      .select({
+        hadithId: recitation.hadithId,
+        recited: recitation.recited,
+        recitedAt: recitation.recitedAt,
+      })
+      .from(recitation)
+      .where(and(eq(recitation.studentId, studentId), eq(recitation.recited, true))),
+    db
+      .select({
+        hadithId: recitationNote.hadithId,
+        mistakes: recitationNote.mistakes,
+        body: recitationNote.body,
+        updatedAt: recitationNote.updatedAt,
+      })
+      .from(recitationNote)
+      .where(eq(recitationNote.studentId, studentId)),
+  ]);
+
+  const recitedMap = new Map(recs.map((r) => [r.hadithId, r.recitedAt]));
+  const noteMap = new Map(notes.map((n) => [n.hadithId, n]));
+
+  return published.map((h) => {
+    const n = noteMap.get(h.id);
+    return {
+      ...h,
+      recited: recitedMap.has(h.id),
+      recitedAt: recitedMap.get(h.id) ?? null,
+      note: n
+        ? {
+            mistakes: n.mistakes ?? "",
+            body: n.body ?? "",
+            updatedAt: n.updatedAt,
+          }
+        : null,
+    };
+  });
+}
+
+/**
+ * The class a student belongs to — nothing else about the teacher is exposed
+ * to her: no code, no e-mail, no list of other teachers.
+ */
+export async function getMyClass(teacherId: string) {
+  await ensureReady();
+  const [row] = await db
+    .select({ name: teacher.name })
     .from(teacher)
-    .leftJoin(hadith, eq(hadith.teacherId, teacher.id))
-    .groupBy(teacher.id, teacher.name, teacher.code, teacher.createdAt)
-    .orderBy(asc(teacher.createdAt));
+    .where(eq(teacher.id, teacherId))
+    .limit(1);
+  return row ?? null;
 }

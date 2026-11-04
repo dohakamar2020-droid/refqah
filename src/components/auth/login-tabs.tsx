@@ -2,32 +2,28 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { loginStudent, loginTeacher } from "@/lib/actions";
+import { loginTeacher } from "@/lib/actions";
 import { LoginForm } from "@/components/login-form";
 
-type Tab = "student" | "teacher" | "legacy";
+type Tab = "teacher" | "legacy";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "student", label: "طالبة" },
-  { id: "teacher", label: "معلمة" },
-  { id: "legacy", label: "اسم المستخدم" },
+  { id: "teacher", label: "بكود المعلمة" },
+  { id: "legacy", label: "اسم مستخدم قديم" },
 ];
 
-function ErrorNote({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <p className="rounded-2xl border border-dusty/50 bg-blush px-4 py-2 text-sm text-deep">
-      {message}
-    </p>
-  );
-}
-
-export function LoginTabs({ defaultTab = "student" }: { defaultTab?: Tab }) {
-  const [tab, setTab] = useState<Tab>(defaultTab);
+/**
+ * دخول المعلمات فقط.
+ *
+ * لا يوجد هنا أي تبويب للطالبات: مسار الطالبة مستقل تمامًا (/student/login)،
+ * فلا تختلط الحسابتان ولا يرى أيٌّ منهما مدخل الآخر.
+ */
+export function LoginTabs() {
+  const [tab, setTab] = useState<Tab>("teacher");
 
   return (
     <div>
-      <div className="grid grid-cols-3 gap-1 rounded-full border border-powder bg-blush/50 p-1">
+      <div className="grid grid-cols-2 gap-1 rounded-full border border-powder bg-blush/50 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -45,7 +41,6 @@ export function LoginTabs({ defaultTab = "student" }: { defaultTab?: Tab }) {
       </div>
 
       <div className="mt-6">
-        {tab === "student" && <StudentLoginForm />}
         {tab === "teacher" && <TeacherLoginForm />}
         {tab === "legacy" && <LoginForm />}
       </div>
@@ -53,75 +48,12 @@ export function LoginTabs({ defaultTab = "student" }: { defaultTab?: Tab }) {
   );
 }
 
-function StudentLoginForm() {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [, startTransition] = useTransition();
-
-  function onSubmit(formData: FormData) {
-    setError(null);
-    setBusy(true);
-    startTransition(async () => {
-      const res = await loginStudent(formData);
-      if (!res.ok) {
-        setError(res.error ?? "تعذّر تسجيل الدخول");
-        setBusy(false);
-        return;
-      }
-      router.push("/me");
-      router.refresh();
-    });
-  }
-
+function ErrorNote({ message }: { message: string | null }) {
+  if (!message) return null;
   return (
-    <form action={onSubmit} className="space-y-4">
-      <div>
-        <label className="label" htmlFor="student-code">
-          كود المعلمة
-        </label>
-        <input
-          id="student-code"
-          name="code"
-          dir="ltr"
-          className="field text-center tracking-[0.15em]"
-          placeholder="TCH-XXXXXX"
-          autoComplete="off"
-          required
-        />
-        <p className="mt-1 text-xs text-muted">
-          الكود اللي أعطته لكِ معلمتك
-        </p>
-      </div>
-
-      <div>
-        <label className="label" htmlFor="student-name">
-          اسمك المسجّل عند المعلمة
-        </label>
-        <input id="student-name" name="name" className="field" required />
-      </div>
-
-      <div>
-        <label className="label" htmlFor="student-password">
-          كلمة المرور
-        </label>
-        <input
-          id="student-password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          className="field"
-          placeholder="••••••••"
-          required
-        />
-      </div>
-
-      <ErrorNote message={error} />
-
-      <button type="submit" className="btn-primary w-full" disabled={busy}>
-        {busy ? "جارٍ الدخول…" : "دخول الطالبة"}
-      </button>
-    </form>
+    <p className="rounded-2xl border border-dusty/50 bg-blush px-4 py-2 text-sm text-deep">
+      {message}
+    </p>
   );
 }
 

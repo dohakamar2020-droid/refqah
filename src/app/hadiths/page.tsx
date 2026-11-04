@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
-import { getClassForRequest } from "@/lib/class-context";
+import { getSessionUser } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 /**
- * /hadiths used to be the single class's journey. With many teachers, the
- * journey belongs to a class: logged-in users are sent to their own class page,
- * visitors are asked for the teacher code on the home page.
+ * صفحة الأحاديث العامة أُلغيت: نص الأحاديث في مسار الطالبة فقط
+ * (الأحاديث المنشورة في فصلها)، ولا تُعرض لأي زائر.
  */
 export default async function HadithsPage() {
-  const klass = await getClassForRequest();
-  if (klass) redirect(`/c/${klass.code}`);
-  redirect("/#lookup");
+  const me = await getSessionUser();
+  if (!me) redirect("/student/login");
+  redirect(me.role === "admin" ? "/admin/hadiths" : "/student");
 }

@@ -178,6 +178,35 @@ export const recitation = pgTable(
   ]
 );
 
+/**
+ * نتيجة التسميع لكل حديث — تكتبها الطالبة بنفسها في حسابها.
+ *
+ * المعلمة ترسل تصحيح التسميع على واتساب، والطالبة تنقله هنا (مواضع الأخطاء +
+ * خلاصة التصحيح) لتعرف على ماذا تركز عند المراجعة. خاصة بالطالبة وحدها.
+ */
+export const recitationNote = pgTable(
+  "recitation_note",
+  {
+    id: text("id").primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => student.id, { onDelete: "cascade" }),
+    hadithId: text("hadith_id")
+      .notNull()
+      .references(() => hadith.id, { onDelete: "cascade" }),
+    /** مواضع الأخطاء — سطر لكل موضع */
+    mistakes: text("mistakes"),
+    /** خلاصة التصحيح / ملاحظات المعلمة */
+    body: text("body"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("recitation_note_student_hadith_uidx").on(t.studentId, t.hadithId),
+    index("recitation_note_student_idx").on(t.studentId),
+  ]
+);
+
 /** Honors / badges, e.g. «سَابِقَةُ الخَيْرَات» لأول من أتمّت الحديث الأول. */
 export const achievement = pgTable("achievement", {
   id: text("id").primaryKey(),
@@ -239,6 +268,7 @@ export type Teacher = typeof teacher.$inferSelect;
 export type Student = typeof student.$inferSelect;
 export type Hadith = typeof hadith.$inferSelect;
 export type Recitation = typeof recitation.$inferSelect;
+export type RecitationNote = typeof recitationNote.$inferSelect;
 export type Achievement = typeof achievement.$inferSelect;
 /** Key/value rows for app bookkeeping (seeded content version, …). */
 export const siteMeta = pgTable("site_meta", {
@@ -261,6 +291,7 @@ export const schema = {
   student,
   hadith,
   recitation,
+  recitationNote,
   achievement,
   registrationSettings,
   competitionSettings,

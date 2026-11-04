@@ -25,8 +25,8 @@ export default async function AdminHadithsPage() {
           <HadithCreateForm />
         </div>
         <p className="mt-4 text-xs text-muted">
-          عند نشر حديث جديد تصبح خاناته متاحة للتسميع في الجدول، وما لم يُنشر يظهر
-          مغلقًا للطالبات.
+          عند نشر حديث جديد يظهر في مساحة الطالبات فورًا بنصه ونتيجة تسميعه، وما
+          لم يُنشر لا يمكن لأي طالبة رؤيته أو الوصول إليه إطلاقًا.
         </p>
       </section>
 

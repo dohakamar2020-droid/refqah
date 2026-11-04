@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { db } from "@/lib/db";
 import {
   recitation,
+  recitationNote,
   student,
   user,
   account,
@@ -770,4 +771,92 @@ export async function changeTeacherCode(formData: FormData): Promise<Result> {
 
   revalidateAll();
   return { ok: true, code };
+}
+
+/* ────────────────────────────────
+ * The student's own result per hadith
+ * ──────────────────────────────── */
+
+/**
+ * The student records the result her teacher sent her on WhatsApp.
+ *
+ * Guard rails, all checked on the server:
+ *   - she writes only for herself (her own student row);
+ *   - only for a hadith that is published *in her own class*;
+ *   - the note stays private to her — the teacher never reads it.
+ */
+export async function saveRecitationNote(formData: FormData): Promise<Result> {
+  await ensureReady();
+  const me = await getSessionUser();
+  if (!me) return { ok: false, error: "يجب تسجيل الدخول" };
+  if (me.role === "admin")
+    return { ok: false, error: "هذا الجزء مخصّص للطالبات" };
+
+  const [profile] = await db
+    .select({ id: student.id, teacherId: student.teacherId })
+    .from(student)
+    .where(eq(student.userId, me.id))
+    .limit(1);
+  if (!profile?.teacherId) return { ok: false, error: "الملف غير موجود" };
+
+  const hadithId = String(formData.get("hadithId") ?? "");
+  const mistakes = String(formData.get("mistakes") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!hadithId) return { ok: false, error: "الحديث غير محدد" };
+  if (mistakes.length > 4000 || body.length > 4000)
+    return { ok: false, error: "النص طويل جدًا — اختصريه" };
+
+  // Published in HER class only.
+  const [h] = await db
+    .select({ id: hadith.id })
+    .from(hadith)
+    .where(
+      and(
+        eq(hadith.id, hadithId),
+        eq(hadith.teacherId, profile.teacherId),
+        eq(hadith.published, true)
+      )
+    )
+    .limit(1);
+  if (!h) return { ok: false, error: "الحديث غير متاح" };
+
+  const now = new Date();
+
+  // An empty result clears the note (she may want to start over).
+  if (!mistakes && !body) {
+    await db
+      .delete(recitationNote)
+      .where(
+        and(
+          eq(recitationNote.studentId, profile.id),
+          eq(recitationNote.hadithId, hadithId)
+        )
+      );
+    revalidateAll();
+    return { ok: true };
+  }
+
+  await db
+    .insert(recitationNote)
+    .values({
+      id: newId("note"),
+      studentId: profile.id,
+      hadithId,
+      mistakes: mistakes || null,
+      body: body || null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [recitationNote.studentId, recitationNote.hadithId],
+      set: {
+        mistakes: mistakes || null,
+        body: body || null,
+        updatedAt: now,
+      },
+    });
+
+  revalidateAll();
+  return { ok: true };
 }

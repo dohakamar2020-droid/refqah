@@ -1,12 +1,15 @@
 import {
   getHonors,
+  getHadithTitles,
   getSabiqah,
   getCompetitionEnabled,
   getLeaderboard,
   getStudents,
   getMessages,
+  getAllHadiths,
 } from "@/lib/queries";
 import { requireTeacher } from "@/lib/permissions";
+import { HadithTitlesManager } from "@/components/admin/hadith-titles-manager";
 import {
   CompetitionMasterToggle,
   AddHonorForm,
@@ -22,15 +25,25 @@ export const dynamic = "force-dynamic";
 export default async function AdminHonorsPage() {
   const { teacher } = await requireTeacher();
   const teacherId = teacher.id;
-  const [honors, sabiqah, competitionOn, leaderboard, students, messages] =
-    await Promise.all([
-      getHonors(teacherId),
-      getSabiqah(teacherId),
-      getCompetitionEnabled(teacherId),
-      getLeaderboard(teacherId),
-      getStudents(teacherId),
-      getMessages(teacherId),
-    ]);
+  const [
+    honors,
+    hadithTitles,
+    sabiqah,
+    competitionOn,
+    leaderboard,
+    students,
+    messages,
+    hadiths,
+  ] = await Promise.all([
+    getHonors(teacherId),
+    getHadithTitles(teacherId),
+    getSabiqah(teacherId),
+    getCompetitionEnabled(teacherId),
+    getLeaderboard(teacherId),
+    getStudents(teacherId),
+    getMessages(teacherId),
+    getAllHadiths(teacherId),
+  ]);
 
   const customHonors = honors.filter((h) => h.title !== "سَابِقَةُ الخَيْرَات");
 
@@ -69,6 +82,40 @@ export default async function AdminHonorsPage() {
         </div>
       </section>
 
+      {/* ── ألقاب الأحاديث ─────────────────────────── */}
+      <section className="card card-pad">
+        <div className="flex items-center gap-2">
+          <SmallFlower className="h-5 w-5 text-dusty" />
+          <h2 className="font-display text-2xl text-deep">ألقاب الأحاديث</h2>
+        </div>
+        <p className="mt-1 text-sm text-muted">
+          لكل حديث لقبٌ مختلف يُمنح لصاحبة المركز الأول فيه. اختاري الحديث، فيقترح
+          النظام ألقابًا تناسب موضوعه — ولكِ أن تكتبي لقبًا من عندكِ. يظهر اللقب في
+          مساحة الطالبة وفي تقريرها.
+        </p>
+
+        <HadithTitlesManager
+          students={students.map((s) => ({ id: s.id, displayName: s.displayName }))}
+          hadiths={hadiths.map((h) => ({
+            id: h.id,
+            order: h.order,
+            title: h.title,
+            published: h.published,
+          }))}
+          awards={hadithTitles.map((t) => ({
+            id: t.id,
+            hadithId: t.hadithId,
+            hadithOrder: t.hadithOrder,
+            hadithName: t.hadithName,
+            studentId: t.studentId,
+            studentName: t.studentName,
+            title: t.title,
+            description: t.description,
+            awardedAtLabel: formatDateTime(t.awardedAt),
+          }))}
+        />
+      </section>
+
       {/* ── سابقة الخيرات ───────────────────────────── */}
       <section className="card card-pad">
         <div className="flex items-center gap-2">
@@ -102,7 +149,8 @@ export default async function AdminHonorsPage() {
       <section className="card card-pad">
         <h2 className="font-display text-2xl text-deep">تكريمات إضافية</h2>
         <p className="mt-1 text-sm text-muted">
-          أوسمة تضيفينها يدويًا لأي طالبة، وتظهر في صفحة حسابها.
+          أوسمة تضيفينها يدويًا لأي طالبة (بخلاف ألقاب الأحاديث أعلاه)، وتظهر في
+          صفحة حسابها.
         </p>
 
         {customHonors.length > 0 && (

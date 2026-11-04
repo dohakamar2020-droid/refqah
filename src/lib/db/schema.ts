@@ -121,10 +121,47 @@ export const student = pgTable(
     phone: text("phone"),
     /** موافقة الطالبة على الظهور في لوحة أفضل 3 */
     competitionOptIn: boolean("competition_opt_in").notNull().default(false),
+    /**
+     * ترتيب الطالبة كما رتّبته المعلمة بنفسها من حسابها.
+     * الأصغر أولًا، وهو ترتيب جدول التسميع وقائمة الطالبات، وأساس «المركز الأول»
+     * الذي يُمنح لقب الحديث.
+     */
+    sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [index("student_teacher_idx").on(t.teacherId)]
+);
+
+/**
+ * لقب الحديث — لقب واحد لكل حديث، تمنحه المعلمة لطالبة واحدة (المركز الأول).
+ *
+ * الألقاب تتغيّر مع كل حديث: الحديث الأول له لقبه، والثاني لقبه… وتُقترح على
+ * المعلمة مجموعة ألقاب جاهزة من `lib/data/titles.ts` ولها أن تكتب لقبها.
+ */
+export const hadithTitle = pgTable(
+  "hadith_title",
+  {
+    id: text("id").primaryKey(),
+    teacherId: text("teacher_id")
+      .notNull()
+      .references(() => teacher.id, { onDelete: "cascade" }),
+    hadithId: text("hadith_id")
+      .notNull()
+      .references(() => hadith.id, { onDelete: "cascade" }),
+    /** صاحبة اللقب — المركز الأول لهذا الحديث */
+    studentId: text("student_id")
+      .notNull()
+      .references(() => student.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    awardedAt: timestamp("awarded_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("hadith_title_teacher_hadith_uidx").on(t.teacherId, t.hadithId),
+    index("hadith_title_student_idx").on(t.studentId),
+  ]
 );
 
 /** The 42 hadiths of the course — one copy per teacher. */
@@ -270,6 +307,7 @@ export type Hadith = typeof hadith.$inferSelect;
 export type Recitation = typeof recitation.$inferSelect;
 export type RecitationNote = typeof recitationNote.$inferSelect;
 export type Achievement = typeof achievement.$inferSelect;
+export type HadithTitle = typeof hadithTitle.$inferSelect;
 /** Key/value rows for app bookkeeping (seeded content version, …). */
 export const siteMeta = pgTable("site_meta", {
   key: text("key").primaryKey(),
@@ -293,6 +331,7 @@ export const schema = {
   recitation,
   recitationNote,
   achievement,
+  hadithTitle,
   registrationSettings,
   competitionSettings,
   message,

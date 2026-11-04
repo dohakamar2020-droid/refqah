@@ -9,7 +9,7 @@ const TABS = [
   { href: "/admin/students", label: "الطالبات" },
   { href: "/admin/reports", label: "التقارير" },
   { href: "/admin/hadiths", label: "الأحاديث" },
-  { href: "/admin/honors", label: "التكريم والمنافسة" },
+  { href: "/admin/honors", label: "الألقاب والتكريم" },
   { href: "/admin/account", label: "حسابي" },
 ];
 

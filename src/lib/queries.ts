@@ -10,6 +10,7 @@ import {
   recitation,
   recitationNote,
   achievement,
+  hadithTitle,
   competitionSettings,
   registrationSettings,
   message,
@@ -83,13 +84,33 @@ export type StudentRow = {
   loginCode: string | null;
   phone: string | null;
   competitionOptIn: boolean;
+  /** ترتيب الطالبة كما رتّبته المعلمة (الأصغر أولًا) */
+  sortOrder: number;
   email: string;
   username: string | null;
 };
 
+/**
+ * ترتيب الطالبات كما اختارته المعلمة.
+ *
+ * الطالبات اللواتي لم تُرتِّبهنّ بعد قيمتهنّ 0، فيظهرنّ في الآخر بترتيب الاسم،
+ * وتتقدّمهنّ مَن رتّبتهنّ المعلمة بالترتيب الذي وضَعته. هذا الترتيب هو نفسه في قائمة
+ * الطالبات وجدول التسميع والتقارير، وعليه يُحسب «المركز الأول».
+ */
+function sortStudents<T extends { displayName: string; sortOrder: number }>(
+  rows: T[]
+): T[] {
+  return [...rows].sort((a, b) => {
+    const ao = a.sortOrder > 0 ? a.sortOrder : Number.MAX_SAFE_INTEGER;
+    const bo = b.sortOrder > 0 ? b.sortOrder : Number.MAX_SAFE_INTEGER;
+    if (ao !== bo) return ao - bo;
+    return a.displayName.localeCompare(b.displayName, "ar");
+  });
+}
+
 export async function getStudents(teacherId: string): Promise<StudentRow[]> {
   await ensureReady();
-  return db
+  const rows = await db
     .select({
       id: student.id,
       userId: student.userId,
@@ -97,13 +118,14 @@ export async function getStudents(teacherId: string): Promise<StudentRow[]> {
       loginCode: student.loginCode,
       phone: student.phone,
       competitionOptIn: student.competitionOptIn,
+      sortOrder: student.sortOrder,
       email: user.email,
       username: user.username,
     })
     .from(student)
     .innerJoin(user, eq(user.id, student.userId))
-    .where(eq(student.teacherId, teacherId))
-    .orderBy(asc(student.displayName));
+    .where(eq(student.teacherId, teacherId));
+  return sortStudents(rows);
 }
 
 /** One student of this teacher (null when she belongs to another class). */
@@ -163,6 +185,7 @@ export async function getStudentProgress(
       loginCode: student.loginCode,
       phone: student.phone,
       competitionOptIn: student.competitionOptIn,
+      sortOrder: student.sortOrder,
       email: user.email,
       username: user.username,
     })
@@ -202,6 +225,7 @@ export async function getStudentProgress(
       loginCode: row.loginCode,
       phone: row.phone,
       competitionOptIn: row.competitionOptIn,
+      sortOrder: row.sortOrder,
       email: row.email,
       username: row.username,
     },
@@ -211,6 +235,73 @@ export async function getStudentProgress(
     recitedHadithIds,
     lastUpdate,
   };
+}
+
+/* ────────────────────────────────
+ * ألقاب الأحاديث (لقب لكل حديث — للمركز الأول)
+ * ──────────────────────────────── */
+
+export type HadithTitleRow = {
+  id: string;
+  hadithId: string;
+  /** رقم الحديث في الأربعين — اللقب يتغيّر معه */
+  hadithOrder: number | null;
+  /** اسم الحديث نفسه، مثل «الأعمال بالنيات» */
+  hadithName: string | null;
+  studentId: string;
+  studentName: string;
+  title: string;
+  description: string | null;
+  awardedAt: Date;
+};
+
+/** ألقاب الحديث في فصل واحد فقط — لقب واحد لكل حديث. */
+export async function getHadithTitles(teacherId: string): Promise<HadithTitleRow[]> {
+  await ensureReady();
+  const rows = await db
+    .select({
+      id: hadithTitle.id,
+      hadithId: hadithTitle.hadithId,
+      hadithOrder: hadith.order,
+      hadithName: hadith.title,
+      studentId: hadithTitle.studentId,
+      studentName: student.displayName,
+      title: hadithTitle.title,
+      description: hadithTitle.description,
+      awardedAt: hadithTitle.awardedAt,
+    })
+    .from(hadithTitle)
+    .innerJoin(student, eq(student.id, hadithTitle.studentId))
+    .leftJoin(hadith, eq(hadith.id, hadithTitle.hadithId))
+    .where(eq(hadithTitle.teacherId, teacherId))
+    .orderBy(asc(hadith.order));
+  return rows;
+}
+
+/** الألقاب التي حصلت عليها طالبة واحدة (لعرضها في مساحتها وتقريرها). */
+export async function getStudentHadithTitles(
+  teacherId: string,
+  studentId: string
+): Promise<HadithTitleRow[]> {
+  const all = await getHadithTitles(teacherId);
+  return all.filter((t) => t.studentId === studentId);
+}
+
+/**
+ * مراكز الطالبات حسب الترتيب الذي وضعته المعلمة بنفسها.
+ * studentId → المركز (1 = الأولى). ومن ليست في الفصل لا مركز لها.
+ */
+export async function getClassRanks(teacherId: string): Promise<Map<string, number>> {
+  const students = await getStudents(teacherId);
+  const ranks = new Map<string, number>();
+  students.forEach((s, i) => ranks.set(s.id, i + 1));
+  return ranks;
+}
+
+/** أول طالبة في ترتيب المعلمة — صاحبة المركز الأول في الفصل. */
+export async function getFirstInClass(teacherId: string) {
+  const [first] = await getStudents(teacherId);
+  return first ?? null;
 }
 
 /* ────────────────────────────────
@@ -407,6 +498,8 @@ export type StudentReport = {
   lastUpdate: string | null;
   recentHadiths: number[];
   honors: { title: string; description: string | null }[];
+  /** ألقاب الأحاديث التي حصلت عليها — لقب لكل حديث كانت الأولى فيه */
+  hadithTitles: { title: string; order: number | null }[];
   isSabiqah: boolean;
   message: string | null;
 };
@@ -470,6 +563,9 @@ export async function getStudentReport(
   const honors = (await getHonors(teacherId)).filter(
     (h) => h.studentId === studentId
   );
+  const hadithTitles = (await getStudentHadithTitles(teacherId, studentId)).map(
+    (t) => ({ title: t.title, order: t.hadithOrder })
+  );
 
   return {
     studentId: row.id,
@@ -483,6 +579,7 @@ export async function getStudentReport(
     lastUpdate: lastUpdate ? lastUpdate.toISOString() : null,
     recentHadiths,
     honors: honors.map((h) => ({ title: h.title, description: h.description })),
+    hadithTitles,
     isSabiqah: honors.some((h) => h.title === "سَابِقَةُ الخَيْرَات"),
     message: (await getRandomMessage(teacherId))?.text ?? null,
   };

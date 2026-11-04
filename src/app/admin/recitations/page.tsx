@@ -4,6 +4,7 @@ import {
   getStudents,
   getAllHadiths,
   getRecitationIndex,
+  getHadithTitles,
 } from "@/lib/queries";
 import { RecitationGrid } from "@/components/admin/recitation-grid";
 import { GridHint, GridLegend } from "@/components/grid-legend";
@@ -13,19 +14,28 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminRecitationsPage() {
   const { teacher } = await requireTeacher();
-  const [students, hadiths, recitedIndex] = await Promise.all([
+  const [students, hadiths, recitedIndex, titles] = await Promise.all([
     getStudents(teacher.id),
     getAllHadiths(teacher.id),
     getRecitationIndex(teacher.id),
+    getHadithTitles(teacher.id),
   ]);
 
+  const titleByHadith = new Map(titles.map((t) => [t.hadithId, t]));
+
   const data: GridData = {
-    students: students.map((s) => ({ id: s.id, displayName: s.displayName })),
+    students: students.map((s, i) => ({
+      id: s.id,
+      displayName: s.displayName,
+      rank: i + 1,
+    })),
     hadiths: hadiths.map((h) => ({
       id: h.id,
       order: h.order,
       title: h.title,
       published: h.published,
+      awardTitle: titleByHadith.get(h.id)?.title ?? null,
+      awardStudentName: titleByHadith.get(h.id)?.studentName ?? null,
     })),
     recited: Object.fromEntries(
       Array.from(recitedIndex.entries()).map(([k, v]) => [k, Array.from(v)])

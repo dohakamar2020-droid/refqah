@@ -8,6 +8,7 @@ import {
   getMessages,
   getRandomMessage,
   getCompetitionEnabled,
+  getStudentHadithTitles,
 } from "@/lib/queries";
 import { ResultCard } from "@/components/student/result-card";
 import { EncouragementCard } from "@/components/encouragement-card";
@@ -49,8 +50,16 @@ export default async function StudentSpacePage() {
     );
   }
 
-  const [progress, klass, board, honors, messages, initialMessage, competitionOn] =
-    await Promise.all([
+  const [
+    progress,
+    klass,
+    board,
+    honors,
+    messages,
+    initialMessage,
+    competitionOn,
+    myTitles,
+  ] = await Promise.all([
       getStudentProgress(student.id),
       getMyClass(teacherId),
       getStudentClassBoard(teacherId, student.id),
@@ -58,6 +67,7 @@ export default async function StudentSpacePage() {
       getMessages(teacherId),
       getRandomMessage(teacherId),
       getCompetitionEnabled(teacherId),
+      getStudentHadithTitles(teacherId, student.id),
     ]);
 
   if (!progress) {
@@ -188,6 +198,38 @@ export default async function StudentSpacePage() {
           </div>
         )}
       </section>
+
+      {/* ── ألقاب الحديث ───────────────────────────────── */}
+      {myTitles.length > 0 && (
+        <section className="mt-10">
+          <h2 className="font-display text-2xl text-deep">ألقابي في الأحاديث</h2>
+          <p className="mt-1 text-sm text-muted">
+            لقبٌ لكل حديث، منحتكِ إياه معلمتكِ لأنكِ كنتِ الأولى فيه.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {myTitles.map((t) => (
+              <div
+                key={t.id}
+                className="rounded-card border border-dusty/50 bg-gradient-to-bl from-powder/70 to-blush/50 p-5"
+              >
+                <p className="flex items-center gap-2 font-display text-lg text-deep">
+                  <SmallFlower className="h-5 w-5 text-dusty" />
+                  {t.title}
+                </p>
+                {t.hadithOrder !== null && (
+                  <p className="mt-1 text-xs text-muted">
+                    الحديث {t.hadithOrder}
+                    {t.hadithName ? ` — ${t.hadithName}` : ""}
+                  </p>
+                )}
+                {t.description && (
+                  <p className="mt-2 text-sm text-muted">{t.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── Achievements ───────────────────────────────── */}
       {myHonors.length > 0 && (

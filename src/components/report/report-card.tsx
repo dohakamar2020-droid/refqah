@@ -212,6 +212,34 @@ export const ReportCard = forwardRef<
         </div>
       )}
 
+      {/* ── ألقاب الأحاديث ── */}
+      {data.hadithTitles.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, color: "#B77B91", marginBottom: 8 }}>
+            ألقابها في الأحاديث
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {data.hadithTitles.map((t, i) => (
+              <span
+                key={`${t.title}-${i}`}
+                style={{
+                  background: "rgba(255,255,255,0.8)",
+                  border: "1px solid #DDB8C5",
+                  color: "#995C74",
+                  borderRadius: 999,
+                  padding: "5px 12px",
+                  fontSize: 12,
+                  fontFamily: "Amiri, serif",
+                }}
+              >
+                {t.title}
+                {t.order ? ` · حـ${t.order}` : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── honors ── */}
       {data.honors.length > 0 && (
         <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8 }}>

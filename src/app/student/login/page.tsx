@@ -29,6 +29,9 @@ export default async function StudentLoginPage() {
 
         <p className="mt-6 text-center text-xs leading-relaxed text-muted">
           لم تستلمي كودكِ بعد؟ معلمتكِ هي من تعطيه لكِ عند إضافتك للفصل.
+          <br />
+          وإن كنتم في فصل يفتح التسجيل الذاتي، سجّلي من تبويب «أول مرة» بكود
+          معلمتكِ.
         </p>
       </div>
     </div>

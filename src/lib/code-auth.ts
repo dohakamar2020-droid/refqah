@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { student, user, teacher } from "@/lib/db/schema";
-import { isValidCode, normalizeCode, normalizeName } from "@/lib/codes";
+import { isValidCode, nameMatches, normalizeCode, normalizeName } from "@/lib/codes";
 import { getTeacherByCode, getTeacherById } from "@/lib/tenancy";
 import {
   createUserWithPassword,
@@ -160,12 +160,19 @@ export async function signInTeacherWithCode(formData: FormData): Promise<Result>
  * Resolve a login code to a class:
  *   - a student's personal code (`STU-…`) → that student;
  *   - her teacher's code (`TCH-…`)     → the student with that name in her class.
+ *
+ * `nameMatches` accepts the shortened form of the name a girl actually types
+ * («تقى» for «تقى محمد إبراهيم»); see its comment for why that is safe.
  */
 async function resolveStudentByCodeAndName(
   rawCode: string,
   name: string,
   teacherCodeHint?: string
-) {
+): Promise<
+  | { student: { id: string; userId: string; displayName: string } }
+  | { ambiguous: true }
+  | null
+> {
   const code = normalizeCode(rawCode);
 
   const [byOwnCode] = await db
@@ -174,10 +181,10 @@ async function resolveStudentByCodeAndName(
     .where(eq(student.loginCode, code))
     .limit(1);
 
+  // The personal code already identifies exactly one girl; the name is only a
+  // confirmation, so a shortened name is fine.
   if (byOwnCode) {
-    return normalizeName(byOwnCode.displayName) === normalizeName(name)
-      ? byOwnCode
-      : null;
+    return nameMatches(name, byOwnCode.displayName) ? { student: byOwnCode } : null;
   }
 
   const t =
@@ -192,10 +199,12 @@ async function resolveStudentByCodeAndName(
     .from(student)
     .where(eq(student.teacherId, t.id));
 
-  const matches = rows.filter(
-    (r) => normalizeName(r.displayName) === normalizeName(name)
-  );
-  return matches.length === 1 ? matches[0] : null;
+  const matches = rows.filter((r) => nameMatches(name, r.displayName));
+  if (matches.length === 1) return { student: matches[0] };
+  // A class code is shared by all her classmates: two girls named «مريم» must
+  // type the rest of the name rather than have one of them opened at random.
+  if (matches.length > 1) return { ambiguous: true };
+  return null;
 }
 
 /**
@@ -214,12 +223,21 @@ export async function signInStudentWithCode(formData: FormData): Promise<Result>
   if (!normalizeCode(rawCode) || !name || !password)
     return { ok: false, error: "الكود والاسم وكلمة المرور مطلوبون" };
 
-  const match = await resolveStudentByCodeAndName(
+  const resolved = await resolveStudentByCodeAndName(
     rawCode,
     name,
     teacherCode || undefined
   );
-  if (!match) return { ok: false, error: INVALID_LOGIN };
+
+  if (resolved && "ambiguous" in resolved)
+    return {
+      ok: false,
+      error:
+        "أكثر من طالبة بهذا الاسم في الفصل — اكتبي اسمك كاملًا كما سجّلته معلمتك",
+    };
+  if (!resolved) return { ok: false, error: INVALID_LOGIN };
+
+  const { student: match } = resolved;
 
   const [row] = await db
     .select({ email: user.email, username: user.username })
@@ -231,6 +249,8 @@ export async function signInStudentWithCode(formData: FormData): Promise<Result>
     row?.email ?? `${row?.username ?? ""}@refqah.local`,
     password
   );
+  // The student did not exist before: make sure the failure can be understood
+  // (wrong code / wrong name / wrong password) instead of a dead end.
   return error ? { ok: false, error: INVALID_LOGIN } : { ok: true };
 }
 

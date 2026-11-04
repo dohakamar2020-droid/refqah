@@ -51,7 +51,7 @@ export function StudentCreateForm() {
             name="password"
             type="text"
             className="field"
-            placeholder="6 أحرف على الأقل"
+            placeholder="8 أحرف على الأقل"
             required
           />
         </div>

@@ -96,7 +96,34 @@ export function normalizeName(raw: string | null | undefined): string {
     .replace(/ؤ/g, "و")
     .replace(/ئ/g, "ي")
     .replace(/ة/g, "ه")
+    .replace(/[\u060C,،;؛/\\|]+/g, " ") // commas typed between names
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+/**
+ * Does the name a student typed belong to the stored name?
+ *
+ * She almost never types her name the way the teacher saved it: the teacher may
+ * have written «تقى محمد إبراهيم» while she signs in as «تقى», or added a
+ * nickname the girl does not think of as part of her name. Requiring an exact
+ * match made a brand-new student unable to sign in at all — the error looked
+ * like a wrong code, while the real cause was an extra name part.
+ *
+ * Rule: every word she types must be one of the stored words (so «تقى» matches
+ * «تقى محمد إبراهيم»), and names of one or two letters are ignored because
+ * Arabic names are full of «بن» / «عبد الله» style fragments. The password is
+ * still required, and when two classmates share the typed name we ask for the
+ * rest of it instead of guessing.
+ */
+export function nameMatches(typed: string, stored: string): boolean {
+  const typedWords = normalizeName(typed).split(" ").filter(Boolean);
+  if (!typedWords.length) return false;
+  const storedWords = new Set(normalizeName(stored).split(" ").filter(Boolean));
+  // Words of one or two letters are skipped unless the whole name is that short
+  // ("مى" is a real given name, so a lone short word is checked as it is).
+  const significant = typedWords.filter((w) => w.length > 2);
+  const pool = significant.length ? significant : typedWords;
+  return pool.every((word) => storedWords.has(word));
 }

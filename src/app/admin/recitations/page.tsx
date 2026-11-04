@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireTeacher } from "@/lib/permissions";
 import {
   getStudents,
   getAllHadiths,
@@ -11,10 +12,11 @@ import type { GridData } from "@/components/grid-types";
 export const dynamic = "force-dynamic";
 
 export default async function AdminRecitationsPage() {
+  const { teacher } = await requireTeacher();
   const [students, hadiths, recitedIndex] = await Promise.all([
-    getStudents(),
-    getAllHadiths(),
-    getRecitationIndex(),
+    getStudents(teacher.id),
+    getAllHadiths(teacher.id),
+    getRecitationIndex(teacher.id),
   ]);
 
   const data: GridData = {

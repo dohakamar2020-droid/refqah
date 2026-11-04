@@ -4,11 +4,17 @@ import { db } from "./index";
 /**
  * Schema bootstrap.
  *
- * Drizzle's generated migration (drizzle/0000_init.sql) is the source of truth
- * for production (Neon) via `npm run db:push` / `db:migrate`. This file holds
- * the same DDL written idempotently so the app can also create its own tables
- * on first boot — which makes local development (PGlite) and the very first
- * Vercel deploy work with zero manual steps.
+ * Drizzle's generated migrations (drizzle/) are the source of truth for
+ * production (Neon) via `npm run db:push` / `db:migrate`. This file holds the
+ * same DDL written idempotently so the app can also create — and upgrade — its
+ * own tables on boot, which makes local development (PGlite) and the very
+ * first Vercel deploy work with zero manual steps.
+ *
+ * The app started as a single-teacher site and now hosts many teachers side by
+ * side; the ALTER statements below upgrade older databases in place:
+ *   teacher table → student.teacher_id / hadith.teacher_id / message.teacher_id
+ *   student.login_code → per-teacher hadith copies.
+ * Data backfill lives in ./tenancy.ts (needs generated codes, so it is code).
  */
 const INIT_SQL = `
 CREATE TABLE IF NOT EXISTS "user" (
@@ -60,10 +66,22 @@ CREATE TABLE IF NOT EXISTS "verification" (
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS "teacher" (
+  "id" text PRIMARY KEY NOT NULL,
+  "user_id" text NOT NULL UNIQUE REFERENCES "user"("id") ON DELETE cascade,
+  "name" text NOT NULL,
+  "code" text NOT NULL UNIQUE,
+  "display_code" text,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS "student" (
   "id" text PRIMARY KEY NOT NULL,
   "user_id" text NOT NULL UNIQUE REFERENCES "user"("id") ON DELETE cascade,
+  "teacher_id" text REFERENCES "teacher"("id") ON DELETE cascade,
   "display_name" text NOT NULL,
+  "login_code" text UNIQUE,
   "avatar_url" text,
   "phone" text,
   "competition_opt_in" boolean DEFAULT false NOT NULL,
@@ -73,7 +91,8 @@ CREATE TABLE IF NOT EXISTS "student" (
 
 CREATE TABLE IF NOT EXISTS "hadith" (
   "id" text PRIMARY KEY NOT NULL,
-  "order" integer NOT NULL UNIQUE,
+  "teacher_id" text REFERENCES "teacher"("id") ON DELETE cascade,
+  "order" integer NOT NULL,
   "title" text NOT NULL,
   "arabic_text" text NOT NULL,
   "narrator" text,
@@ -113,19 +132,12 @@ CREATE TABLE IF NOT EXISTS "competition_settings" (
 
 CREATE TABLE IF NOT EXISTS "message" (
   "id" text PRIMARY KEY NOT NULL,
+  "teacher_id" text REFERENCES "teacher"("id") ON DELETE cascade,
   "text" text NOT NULL,
   "category" text,
   "active" boolean DEFAULT true NOT NULL,
   "created_at" timestamp DEFAULT now() NOT NULL
 );
-
--- Added after the initial schema: optional WhatsApp number on the student profile
-ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "phone" text;
-
--- الراوي والتخريج: replaced the single "source" field
-ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "narrator" text;
-ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "takhrij" text;
-ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "text_edited" boolean DEFAULT false NOT NULL;
 
 CREATE TABLE IF NOT EXISTS "site_meta" (
   "key" text PRIMARY KEY NOT NULL,
@@ -139,6 +151,27 @@ CREATE TABLE IF NOT EXISTS "registration_settings" (
   "code" text,
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
+
+-- ── Upgrades for databases created before multi-teacher support ──────────
+ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "phone" text;
+ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "teacher_id" text;
+ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "login_code" text;
+
+ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "narrator" text;
+ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "takhrij" text;
+ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "text_edited" boolean DEFAULT false NOT NULL;
+ALTER TABLE "hadith" ADD COLUMN IF NOT EXISTS "teacher_id" text;
+
+ALTER TABLE "message" ADD COLUMN IF NOT EXISTS "teacher_id" text;
+
+-- «order» used to be unique on its own; now each teacher owns her own copy,
+-- so uniqueness becomes (teacher_id, order).
+ALTER TABLE "hadith" DROP CONSTRAINT IF EXISTS "hadith_order_unique";
+ALTER TABLE "hadith" DROP CONSTRAINT IF EXISTS "hadith_order_key";
+CREATE UNIQUE INDEX IF NOT EXISTS "hadith_teacher_order_uidx" ON "hadith" ("teacher_id","order");
+CREATE UNIQUE INDEX IF NOT EXISTS "student_login_code_uidx" ON "student" ("login_code");
+CREATE INDEX IF NOT EXISTS "student_teacher_idx" ON "student" ("teacher_id");
+CREATE INDEX IF NOT EXISTS "message_teacher_idx" ON "message" ("teacher_id");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "recitation_student_hadith_uidx" ON "recitation" USING btree ("student_id","hadith_id");
 CREATE INDEX IF NOT EXISTS "recitation_hadith_idx" ON "recitation" USING btree ("hadith_id");

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireTeacher } from "@/lib/permissions";
 import {
   getJourneyProgress,
   getStudents,
@@ -32,6 +33,9 @@ function Stat({
 }
 
 export default async function AdminOverviewPage() {
+  const { teacher } = await requireTeacher();
+  const teacherId = teacher.id;
+
   const [
     progress,
     students,
@@ -41,13 +45,13 @@ export default async function AdminOverviewPage() {
     leaderboard,
     lastUpdate,
   ] = await Promise.all([
-    getJourneyProgress(),
-    getStudents(),
-    getRecitationIndex(),
-    getSabiqah(),
-    getCompetitionEnabled(),
-    getLeaderboard(),
-    getLastRecitationUpdate(),
+    getJourneyProgress(teacherId),
+    getStudents(teacherId),
+    getRecitationIndex(teacherId),
+    getSabiqah(teacherId),
+    getCompetitionEnabled(teacherId),
+    getLeaderboard(teacherId),
+    getLastRecitationUpdate(teacherId),
   ]);
 
   const totalApproved = Array.from(recitedIndex.values()).reduce(

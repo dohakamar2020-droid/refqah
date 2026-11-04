@@ -10,25 +10,46 @@ import {
   user,
   account,
   hadith,
+  teacher,
   achievement,
   competitionSettings,
   registrationSettings,
   message,
 } from "@/lib/db/schema";
 import { ensureReady } from "@/lib/db/ready";
-import { syncFirstHadithAchievement, createUserWithPassword } from "@/lib/db/seed";
+import {
+  syncFirstHadithAchievement,
+  createUserWithPassword,
+  hasAnyTeacher,
+  maybeSeedDemoForTeacher,
+  newStudentCode,
+} from "@/lib/db/seed";
 import { getSessionUser } from "@/lib/permissions";
-import { hasAdmin } from "@/lib/queries";
+import { isValidCode, normalizeCode } from "@/lib/codes";
+import {
+  createTeacherWithCode,
+  joinWithTeacherCode,
+  signInStudentWithCode,
+  signInTeacherWithCode,
+} from "@/lib/code-auth";
 
-type Result = { ok: boolean; error?: string };
+type Result = { ok: boolean; error?: string; code?: string };
 
-/** Every write goes through here: the teacher is the only writer. */
-async function requireAdminOrThrow() {
+/**
+ * Every write goes through here.
+ *
+ * It returns the teacher's own space (`teacherId`), which every query below
+ * must filter on: a teacher may only ever touch her own class — checking the
+ * role alone would let any teacher edit another teacher's students.
+ */
+async function requireTeacherOrThrow() {
+  await ensureReady();
   const me = await getSessionUser();
   if (!me) return { error: "يجب تسجيل الدخول" } as const;
   if (me.role !== "admin")
     return { error: "ليس لديك صلاحية لتعديل البيانات" } as const;
-  return { me } as const;
+  if (!me.teacherId) return { error: "لا توجد مساحة معلمة لهذا الحساب" } as const;
+  return { me, teacherId: me.teacherId } as const;
 }
 
 function newId(prefix: string) {
@@ -47,7 +68,7 @@ function normalizePhone(raw: FormDataEntryValue | null): string | "invalid" {
   const value = String(raw ?? "").trim();
   if (!value) return "";
   const digits = value.replace(/[^\d]/g, "");
-  // International format without the leading +; keep it宽松 but sane.
+  // International format without the leading +; keep it lenient but sane.
   if (digits.length < 8 || digits.length > 15) return "invalid";
   return digits;
 }
@@ -61,15 +82,27 @@ export async function setRecitation(
   hadithId: string,
   recited: boolean
 ): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
-  // Only published hadiths can be marked as recited.
-  const [h] = await db.select().from(hadith).where(eq(hadith.id, hadithId)).limit(1);
+  // The hadith must belong to this teacher's copy …
+  const [h] = await db
+    .select()
+    .from(hadith)
+    .where(and(eq(hadith.id, hadithId), eq(hadith.teacherId, teacherId)))
+    .limit(1);
   if (!h) return { ok: false, error: "الحديث غير موجود" };
   if (recited && !h.published)
     return { ok: false, error: "لا يمكن تسجيل تسميع حديث لم يُنشر بعد" };
+
+  // … and so must the student.
+  const [s] = await db
+    .select({ id: student.id })
+    .from(student)
+    .where(and(eq(student.id, studentId), eq(student.teacherId, teacherId)))
+    .limit(1);
+  if (!s) return { ok: false, error: "الطالبة غير موجودة في فصلك" };
 
   const now = new Date();
   const existing = await db
@@ -101,7 +134,7 @@ export async function setRecitation(
     });
   }
 
-  await syncFirstHadithAchievement();
+  await syncFirstHadithAchievement(teacherId);
   revalidateAll();
   return { ok: true };
 }
@@ -110,57 +143,68 @@ export async function setRecitation(
  * Students
  * ──────────────────────────────── */
 
+/**
+ * Create a student in the teacher's own class.
+ *
+ * Her login code is generated here and returned once, so the teacher can hand
+ * it to her with the password she typed. The student then signs in with
+ * «الكود + الاسم + كلمة المرور».
+ */
 export async function createStudent(formData: FormData): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
   const name = String(formData.get("name") ?? "").trim();
-  const username = String(formData.get("username") ?? "").trim();
   const password = String(formData.get("password") ?? "").trim();
-  const emailRaw = String(formData.get("email") ?? "").trim();
   const phone = normalizePhone(formData.get("phone"));
   const optIn = formData.get("competitionOptIn") === "on";
 
   if (phone === "invalid")
-    return { ok: false, error: "رقم الواتساب غير صحيح (استخدمي الصيغة الدولية مثل 201012345678)" };
+    return {
+      ok: false,
+      error: "رقم الواتساب غير صحيح (استخدمي الصيغة الدولية مثل 201012345678)",
+    };
 
   if (!name) return { ok: false, error: "اسم الطالبة مطلوب" };
-  if (username.length < 3)
-    return { ok: false, error: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" };
   if (password.length < 6)
     return { ok: false, error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" };
 
-  const email = emailRaw || `${username.toLowerCase()}@refqah.local`;
+  const code = await newStudentCode();
+  const username = code.replace(/-/g, "").toLowerCase();
 
   try {
     const created = await createUserWithPassword({
       name,
-      email,
+      email: `${username}@refqah.local`,
       username,
       password,
       role: "student",
       displayName: name,
       competitionOptIn: optIn,
+      teacherId,
+      loginCode: code,
     });
     if (created.studentId && phone) {
       await db
         .update(student)
         .set({ phone, updatedAt: new Date() })
-        .where(eq(student.id, created.studentId));
+        .where(
+          and(eq(student.id, created.studentId), eq(student.teacherId, teacherId))
+        );
     }
   } catch {
-    return { ok: false, error: "اسم المستخدم أو البريد مستخدم بالفعل" };
+    return { ok: false, error: "تعذّر إنشاء الحساب — حاولي مرة أخرى" };
   }
 
   revalidateAll();
-  return { ok: true };
+  return { ok: true, code };
 }
 
 export async function updateStudent(formData: FormData): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
   const studentId = String(formData.get("studentId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -169,7 +213,10 @@ export async function updateStudent(formData: FormData): Promise<Result> {
   const phone = normalizePhone(formData.get("phone"));
 
   if (phone === "invalid")
-    return { ok: false, error: "رقم الواتساب غير صحيح (استخدمي الصيغة الدولية مثل 201012345678)" };
+    return {
+      ok: false,
+      error: "رقم الواتساب غير صحيح (استخدمي الصيغة الدولية مثل 201012345678)",
+    };
 
   if (!studentId || !name) return { ok: false, error: "بيانات غير مكتملة" };
   if (password && password.length < 6)
@@ -178,9 +225,9 @@ export async function updateStudent(formData: FormData): Promise<Result> {
   const [s] = await db
     .select({ userId: student.userId })
     .from(student)
-    .where(eq(student.id, studentId))
+    .where(and(eq(student.id, studentId), eq(student.teacherId, teacherId)))
     .limit(1);
-  if (!s) return { ok: false, error: "الطالبة غير موجودة" };
+  if (!s) return { ok: false, error: "الطالبة غير موجودة في فصلك" };
 
   await db
     .update(student)
@@ -201,7 +248,7 @@ export async function updateStudent(formData: FormData): Promise<Result> {
     const hashed = await hashPassword(password);
     await db
       .update(account)
-      .set({ password: hashed })
+      .set({ password: hashed, updatedAt: new Date() })
       .where(
         and(eq(account.userId, s.userId), eq(account.providerId, "credential"))
       );
@@ -211,38 +258,65 @@ export async function updateStudent(formData: FormData): Promise<Result> {
   return { ok: true };
 }
 
-export async function deleteStudent(studentId: string): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+/** Issue a new login code for one of her students (e.g. the old one leaked). */
+export async function rotateStudentCode(studentId: string): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  const [s] = await db
+    .select({ id: student.id })
+    .from(student)
+    .where(and(eq(student.id, studentId), eq(student.teacherId, teacherId)))
+    .limit(1);
+  if (!s) return { ok: false, error: "الطالبة غير موجودة في فصلك" };
+
+  const code = await newStudentCode();
+  await db
+    .update(student)
+    .set({ loginCode: code, updatedAt: new Date() })
+    .where(eq(student.id, studentId));
+
+  revalidateAll();
+  return { ok: true, code };
+}
+
+export async function deleteStudent(studentId: string): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
   const [s] = await db
     .select({ userId: student.userId })
     .from(student)
-    .where(eq(student.id, studentId))
+    .where(and(eq(student.id, studentId), eq(student.teacherId, teacherId)))
     .limit(1);
-  if (!s) return { ok: false, error: "الطالبة غير موجودة" };
+  if (!s) return { ok: false, error: "الطالبة غير موجودة في فصلك" };
 
   // Cascades remove the profile, recitations and achievements.
   await db.delete(user).where(eq(user.id, s.userId));
-  await syncFirstHadithAchievement();
+  await syncFirstHadithAchievement(teacherId);
   revalidateAll();
   return { ok: true };
 }
 
 /* ────────────────────────────────
- * Hadiths
+ * Hadiths (each teacher owns her copy)
  * ──────────────────────────────── */
 
 export async function setHadithPublished(
   hadithId: string,
   published: boolean
 ): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
-  const [h] = await db.select().from(hadith).where(eq(hadith.id, hadithId)).limit(1);
+  const [h] = await db
+    .select()
+    .from(hadith)
+    .where(and(eq(hadith.id, hadithId), eq(hadith.teacherId, teacherId)))
+    .limit(1);
   if (!h) return { ok: false, error: "الحديث غير موجود" };
 
   await db
@@ -259,9 +333,9 @@ export async function setHadithPublished(
 }
 
 export async function updateHadith(formData: FormData): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
   const hadithId = String(formData.get("hadithId") ?? "");
   const title = String(formData.get("title") ?? "").trim();
@@ -271,6 +345,13 @@ export async function updateHadith(formData: FormData): Promise<Result> {
 
   if (!hadithId || !title || !arabicText)
     return { ok: false, error: "العنوان والنص مطلوبان" };
+
+  const [h] = await db
+    .select({ id: hadith.id })
+    .from(hadith)
+    .where(and(eq(hadith.id, hadithId), eq(hadith.teacherId, teacherId)))
+    .limit(1);
+  if (!h) return { ok: false, error: "الحديث غير موجود" };
 
   await db
     .update(hadith)
@@ -291,25 +372,28 @@ export async function updateHadith(formData: FormData): Promise<Result> {
 }
 
 export async function createHadith(formData: FormData): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
   const title = String(formData.get("title") ?? "").trim();
   const narrator = String(formData.get("narrator") ?? "").trim();
   const arabicText = String(formData.get("arabicText") ?? "").trim();
   const takhrij = String(formData.get("takhrij") ?? "").trim();
 
-  if (!title || !arabicText) return { ok: false, error: "العنوان والنص مطلوبان" };
+  if (!title || !arabicText)
+    return { ok: false, error: "العنوان والنص مطلوبان" };
 
   const [top] = await db
     .select({ order: hadith.order })
     .from(hadith)
+    .where(eq(hadith.teacherId, teacherId))
     .orderBy(desc(hadith.order))
     .limit(1);
 
   await db.insert(hadith).values({
     id: newId("had"),
+    teacherId,
     order: (top?.order ?? 0) + 1,
     title,
     narrator: narrator || null,
@@ -323,11 +407,19 @@ export async function createHadith(formData: FormData): Promise<Result> {
 }
 
 export async function deleteHadith(hadithId: string): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  const [h] = await db
+    .select({ id: hadith.id })
+    .from(hadith)
+    .where(and(eq(hadith.id, hadithId), eq(hadith.teacherId, teacherId)))
+    .limit(1);
+  if (!h) return { ok: false, error: "الحديث غير موجود" };
+
   await db.delete(hadith).where(eq(hadith.id, hadithId));
-  await syncFirstHadithAchievement();
+  await syncFirstHadithAchievement(teacherId);
   revalidateAll();
   return { ok: true };
 }
@@ -337,13 +429,13 @@ export async function deleteHadith(hadithId: string): Promise<Result> {
  * ──────────────────────────────── */
 
 export async function setCompetitionEnabled(enabled: boolean): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
   await db
     .insert(competitionSettings)
-    .values({ id: "main", enabled, updatedAt: new Date() })
+    .values({ id: teacherId, enabled, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: competitionSettings.id,
       set: { enabled, updatedAt: new Date() },
@@ -368,7 +460,6 @@ export async function setMyCompetitionOptIn(optIn: boolean): Promise<Result> {
     .limit(1);
   if (!profile) return { ok: false, error: "الملف غير موجود" };
 
-  // Nothing to show on the board if the teacher switched the competition off.
   await db
     .update(student)
     .set({ competitionOptIn: optIn, updatedAt: new Date() })
@@ -383,14 +474,21 @@ export async function setMyCompetitionOptIn(optIn: boolean): Promise<Result> {
  * ──────────────────────────────── */
 
 export async function addHonor(formData: FormData): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
   const studentId = String(formData.get("studentId") ?? "");
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   if (!studentId || !title) return { ok: false, error: "البيانات غير مكتملة" };
+
+  const [s] = await db
+    .select({ id: student.id })
+    .from(student)
+    .where(and(eq(student.id, studentId), eq(student.teacherId, teacherId)))
+    .limit(1);
+  if (!s) return { ok: false, error: "الطالبة غير موجودة في فصلك" };
 
   await db.insert(achievement).values({
     id: newId("ach"),
@@ -407,18 +505,27 @@ export async function addHonor(formData: FormData): Promise<Result> {
 }
 
 export async function deleteHonor(honorId: string): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  const [row] = await db
+    .select({ id: achievement.id })
+    .from(achievement)
+    .innerJoin(student, eq(student.id, achievement.studentId))
+    .where(and(eq(achievement.id, honorId), eq(student.teacherId, teacherId)))
+    .limit(1);
+  if (!row) return { ok: false, error: "التكريم غير موجود" };
+
   await db.delete(achievement).where(eq(achievement.id, honorId));
   revalidateAll();
   return { ok: true };
 }
 
 export async function addMessage(formData: FormData): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
   const text = String(formData.get("text") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
@@ -426,6 +533,7 @@ export async function addMessage(formData: FormData): Promise<Result> {
 
   await db.insert(message).values({
     id: newId("msg"),
+    teacherId,
     text,
     category: category || null,
     active: true,
@@ -436,59 +544,126 @@ export async function addMessage(formData: FormData): Promise<Result> {
 }
 
 export async function deleteMessage(messageId: string): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
+  const authCheck = await requireTeacherOrThrow();
   if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  const [row] = await db
+    .select({ id: message.id })
+    .from(message)
+    .where(and(eq(message.id, messageId), eq(message.teacherId, teacherId)))
+    .limit(1);
+  if (!row) return { ok: false, error: "الرسالة غير موجودة" };
+
   await db.delete(message).where(eq(message.id, messageId));
   revalidateAll();
   return { ok: true };
 }
 
 /* ────────────────────────────────
- * First-run setup & the teacher's own account
+ * Registration switch (per teacher)
  * ──────────────────────────────── */
 
 /**
- * Create the teacher account from the first-run setup screen.
- * Runs only while the installation has no teacher account, so it can never
- * be used to add a second admin or to overwrite an existing one.
+ * The teacher turns self-registration on/off for HER class. Students who join
+ * type her code + their name; her code is the join code, so there is nothing
+ * else to rotate.
  */
-export async function setupAdmin(formData: FormData): Promise<Result> {
-  await ensureReady();
-  if (await hasAdmin())
-    return { ok: false, error: "تم إعداد حساب المعلمة بالفعل" };
+export async function setRegistrationSettings(
+  formData: FormData
+): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
-  const name = String(formData.get("name") ?? "").trim();
-  const username = String(formData.get("username") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim();
-  const password = String(formData.get("password") ?? "");
-  const confirm = String(formData.get("confirmPassword") ?? "");
+  const enabled = formData.get("enabled") === "on";
 
-  if (!name) return { ok: false, error: "اسم المعلمة مطلوب" };
-  if (username.length < 3)
-    return { ok: false, error: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" };
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    return { ok: false, error: "صيغة البريد الإلكتروني غير صحيحة" };
-  if (password.length < 8)
-    return { ok: false, error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" };
-  if (password !== confirm)
-    return { ok: false, error: "كلمتا المرور غير متطابقتين" };
-
-  try {
-    await createUserWithPassword({
-      name,
-      email: email || `${username.toLowerCase()}@refqah.local`,
-      username,
-      password,
-      role: "admin",
+  await db
+    .insert(registrationSettings)
+    .values({ id: teacherId, enabled, code: null, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: registrationSettings.id,
+      set: { enabled, updatedAt: new Date() },
     });
-  } catch {
-    return { ok: false, error: "اسم المستخدم أو البريد مستخدم بالفعل" };
-  }
 
   revalidateAll();
   return { ok: true };
 }
+
+/* ────────────────────────────────
+ * Sign-in / sign-up with codes
+ * ──────────────────────────────── */
+
+/** Teacher sign-in: كود المعلمة + كلمة المرور. */
+export async function loginTeacher(formData: FormData): Promise<Result> {
+  await ensureReady();
+  const res = await signInTeacherWithCode(formData);
+  if (res.ok) revalidateAll();
+  return res;
+}
+
+/** Student sign-in: كود المعلمة (أو كودها الخاص) + الاسم + كلمة المرور. */
+export async function loginStudent(formData: FormData): Promise<Result> {
+  await ensureReady();
+  const res = await signInStudentWithCode(formData);
+  if (res.ok) revalidateAll();
+  return res;
+}
+
+/** A student joins her teacher's class herself (teacher enabled it). */
+export async function joinClass(formData: FormData): Promise<Result> {
+  await ensureReady();
+  const res = await joinWithTeacherCode(formData);
+  if (res.ok) revalidateAll();
+  return res;
+}
+
+/** New teacher space: كود المعلمة + الاسم + كلمة المرور. */
+export async function registerTeacher(formData: FormData): Promise<Result> {
+  await ensureReady();
+  const res = await createTeacherWithCode(formData);
+  if (!res.ok) return res;
+
+  // Not signed in yet, so find the space that was just created.
+  const { getTeacherByCode } = await import("@/lib/tenancy");
+  const created = await getTeacherByCode(
+    normalizeCode(String(formData.get("code") ?? ""))
+  );
+  if (created) await maybeSeedDemoForTeacher(created.id);
+
+  await signInTeacherWithCode(formData);
+  revalidateAll();
+  return { ok: true };
+}
+
+/**
+ * First-run setup: the very first teacher of the installation.
+ * Runs only while the installation has no teacher at all, so it can never be
+ * used to overwrite an existing account.
+ */
+export async function setupAdmin(formData: FormData): Promise<Result> {
+  await ensureReady();
+  if (await hasAnyTeacher())
+    return { ok: false, error: "تم إعداد الموقع بالفعل — سجّلي الدخول" };
+
+  const res = await createTeacherWithCode(formData);
+  if (!res.ok) return res;
+
+  // Not signed in yet, so find the space that was just created.
+  const { getTeacherByCode } = await import("@/lib/tenancy");
+  const created = await getTeacherByCode(
+    normalizeCode(String(formData.get("code") ?? ""))
+  );
+  if (created) await maybeSeedDemoForTeacher(created.id);
+
+  await signInTeacherWithCode(formData);
+  revalidateAll();
+  return { ok: true };
+}
+
+/* ────────────────────────────────
+ * The teacher's own account
+ * ──────────────────────────────── */
 
 /** The teacher changes her own password (current password required). */
 export async function changeMyPassword(formData: FormData): Promise<Result> {
@@ -529,7 +704,7 @@ export async function changeMyPassword(formData: FormData): Promise<Result> {
   return { ok: true };
 }
 
-/** The teacher updates her own display name. */
+/** The teacher updates her own display name (kept in user + teacher rows). */
 export async function updateMyProfile(formData: FormData): Promise<Result> {
   await ensureReady();
   const me = await getSessionUser();
@@ -543,108 +718,56 @@ export async function updateMyProfile(formData: FormData): Promise<Result> {
     .set({ name, updatedAt: new Date() })
     .where(eq(user.id, me.id));
 
-  revalidateAll();
-  return { ok: true };
-}
-
-/* ────────────────────────────────
- * Student self-registration
- * ──────────────────────────────── */
-
-/** A random, easy-to-dictate join code such as "RQ-4K7T". */
-function generateJoinCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusable chars
-  let out = "";
-  for (let i = 0; i < 6; i++) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  if (me.teacherId) {
+    await db
+      .update(teacher)
+      .set({ name, updatedAt: new Date() })
+      .where(eq(teacher.id, me.teacherId));
   }
-  return `RQ-${out}`;
-}
-
-/** The teacher turns self-registration on/off and rotates the join code. */
-export async function setRegistrationSettings(formData: FormData): Promise<Result> {
-  await ensureReady();
-  const authCheck = await requireAdminOrThrow();
-  if ("error" in authCheck) return { ok: false, error: authCheck.error };
-
-  const enabled = formData.get("enabled") === "on";
-  const rotate = formData.get("rotate") === "on" || formData.get("rotate") === "true";
-  const requireCode = formData.get("requireCode") === "on";
-
-  const [current] = await db
-    .select()
-    .from(registrationSettings)
-    .where(eq(registrationSettings.id, "main"))
-    .limit(1);
-
-  let code: string | null = requireCode ? current?.code ?? null : null;
-  if (requireCode && (rotate || !code)) code = generateJoinCode();
-
-  await db
-    .insert(registrationSettings)
-    .values({ id: "main", enabled, code, updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: registrationSettings.id,
-      set: { enabled, code, updatedAt: new Date() },
-    });
 
   revalidateAll();
   return { ok: true };
 }
 
 /**
- * A student creates her own account.
- * Only allowed while the teacher has self-registration switched on, and the
- * join code (when set) must match. Always creates a plain student — never an
- * admin — so this can never be used to gain teacher privileges.
+ * The teacher changes her own login code.
+ * The code is unique across the whole app: teachers and student codes share
+ * one namespace, so nobody can be reached through two different accounts.
  */
-export async function registerStudent(formData: FormData): Promise<Result> {
-  await ensureReady();
+export async function changeTeacherCode(formData: FormData): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
 
-  const [settings] = await db
-    .select()
-    .from(registrationSettings)
-    .where(eq(registrationSettings.id, "main"))
+  const code = normalizeCode(String(formData.get("code") ?? ""));
+  if (!code) return { ok: false, error: "الكود مطلوب" };
+  if (!isValidCode(code))
+    return {
+      ok: false,
+      error: "الكود من 4 إلى 24 حرفًا إنجليزيًا أو أرقامًا (يمكن استخدام - أو _)",
+    };
+
+  const [takenByTeacher] = await db
+    .select({ id: teacher.id })
+    .from(teacher)
+    .where(eq(teacher.code, code))
     .limit(1);
+  if (takenByTeacher && takenByTeacher.id !== teacherId)
+    return { ok: false, error: "هذا الكود مستخدم بالفعل — اختاري كودًا آخر" };
 
-  if (!settings?.enabled)
-    return { ok: false, error: "التسجيل الذاتي مغلق حاليًا — تواصلي مع المعلمة" };
+  const [takenByStudent] = await db
+    .select({ id: student.id })
+    .from(student)
+    .where(eq(student.loginCode, code))
+    .limit(1);
+  if (takenByStudent)
+    return { ok: false, error: "هذا الكود مستخدم بالفعل — اختاري كودًا آخر" };
 
-  const name = String(formData.get("name") ?? "").trim();
-  const username = String(formData.get("username") ?? "").trim();
-  const password = String(formData.get("password") ?? "");
-  const confirm = String(formData.get("confirmPassword") ?? "");
-  const code = String(formData.get("code") ?? "").trim();
-  const phone = normalizePhone(formData.get("phone"));
-
-  if (phone === "invalid")
-    return { ok: false, error: "رقم الواتساب غير صحيح (استخدمي الصيغة الدولية مثل 201012345678)" };
-
-  if (!name) return { ok: false, error: "الاسم مطلوب" };
-  if (username.length < 3)
-    return { ok: false, error: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" };
-  if (password.length < 8)
-    return { ok: false, error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" };
-  if (password !== confirm)
-    return { ok: false, error: "كلمتا المرور غير متطابقتين" };
-
-  if (settings.code && code.toUpperCase() !== settings.code.toUpperCase())
-    return { ok: false, error: "كود الانضمام غير صحيح" };
-
-  try {
-    await createUserWithPassword({
-      name,
-      email: `${username.toLowerCase()}@refqah.local`,
-      username,
-      password,
-      role: "student",
-      displayName: name,
-      competitionOptIn: false, // she opts in herself later
-    });
-  } catch {
-    return { ok: false, error: "اسم المستخدم مستخدم بالفعل — جرّبي اسمًا آخر" };
-  }
+  await db
+    .update(teacher)
+    .set({ code, displayCode: code, updatedAt: new Date() })
+    .where(eq(teacher.id, teacherId));
 
   revalidateAll();
-  return { ok: true };
+  return { ok: true, code };
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/permissions";
+import { requireTeacher } from "@/lib/permissions";
 import { getStudentReport } from "@/lib/queries";
 import { ReportCard } from "@/components/report/report-card";
 import { ReportShareBar } from "@/components/report/report-share-bar";
@@ -34,9 +34,9 @@ export default async function StudentReportPage({
 }: {
   params: { studentId: string };
 }) {
-  await requireAdmin();
+  const { teacher } = await requireTeacher();
 
-  const data = await getStudentReport(params.studentId);
+  const data = await getStudentReport(teacher.id, params.studentId);
   if (!data) notFound();
 
   const dateLabel = formatDate(new Date());

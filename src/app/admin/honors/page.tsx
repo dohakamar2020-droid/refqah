@@ -6,6 +6,7 @@ import {
   getStudents,
   getMessages,
 } from "@/lib/queries";
+import { requireTeacher } from "@/lib/permissions";
 import {
   CompetitionMasterToggle,
   AddHonorForm,
@@ -19,14 +20,16 @@ import { formatDateTime } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function AdminHonorsPage() {
+  const { teacher } = await requireTeacher();
+  const teacherId = teacher.id;
   const [honors, sabiqah, competitionOn, leaderboard, students, messages] =
     await Promise.all([
-      getHonors(),
-      getSabiqah(),
-      getCompetitionEnabled(),
-      getLeaderboard(),
-      getStudents(),
-      getMessages(),
+      getHonors(teacherId),
+      getSabiqah(teacherId),
+      getCompetitionEnabled(teacherId),
+      getLeaderboard(teacherId),
+      getStudents(teacherId),
+      getMessages(teacherId),
     ]);
 
   const customHonors = honors.filter((h) => h.title !== "سَابِقَةُ الخَيْرَات");
@@ -37,7 +40,8 @@ export default async function AdminHonorsPage() {
       <section className="card card-pad">
         <h2 className="font-display text-2xl text-deep">المنافسة</h2>
         <p className="mt-1 text-sm text-muted">
-          الطالبة توافق بنفسها، والمعلمة تتحكم في تشغيل اللوحة أو إيقافها.
+          الطالبة توافق بنفسها، والمعلمة تتحكم في تشغيل اللوحة أو إيقافها — ولا
+          تُقارن طالبات فصلك بطالبات فصل آخر أبدًا.
         </p>
 
         <div className="mt-5">

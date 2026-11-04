@@ -1,4 +1,5 @@
 import { getAllHadiths } from "@/lib/queries";
+import { requireTeacher } from "@/lib/permissions";
 import { HadithRow } from "@/components/admin/hadith-row";
 import { HadithCreateForm } from "@/components/admin/hadith-create-form";
 import { PUBLISH_DAYS } from "@/lib/format";
@@ -6,7 +7,8 @@ import { PUBLISH_DAYS } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function AdminHadithsPage() {
-  const hadiths = await getAllHadiths();
+  const { teacher } = await requireTeacher();
+  const hadiths = await getAllHadiths(teacher.id);
   const publishedCount = hadiths.filter((h) => h.published).length;
 
   return (

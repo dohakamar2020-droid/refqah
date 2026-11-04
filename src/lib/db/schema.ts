@@ -68,46 +68,92 @@ export const verification = pgTable("verification", {
 });
 
 /* ────────────────────────────────
- * App tables
+ * Teacher (المعلمة) — the tenant
  * ──────────────────────────────── */
 
-/** Student profile — 1:1 with a user account. Privacy settings live here. */
-export const student = pgTable("student", {
+/**
+ * One row per teacher account. Everything she owns (students, hadiths,
+ * recitations, honors, messages, settings) hangs off this id, so two teachers
+ * on the same installation never see each other's data.
+ *
+ * `code` is the teacher's own login code («كود المعلمة») — normalized to
+ * upper-case, unique across the whole app. `displayCode` keeps the pretty form
+ * shown to her and to her students.
+ */
+export const teacher = pgTable("teacher", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
     .unique()
     .references(() => user.id, { onDelete: "cascade" }),
-  displayName: text("display_name").notNull(),
-  avatarUrl: text("avatar_url"),
-  /**
-   * رقم واتساب الطالبة بالصيغة الدولية (مثال: 201012345678).
-   * اختياري — يُستخدم فقط لفتح محادثة واتساب عند إرسال التقرير.
-   */
-  phone: text("phone"),
-  /** موافقة الطالبة على الظهور في لوحة أفضل 3 */
-  competitionOptIn: boolean("competition_opt_in").notNull().default(false),
+  name: text("name").notNull(),
+  code: text("code").notNull().unique(),
+  displayCode: text("display_code"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-/** The 42 hadiths of the course. */
-export const hadith = pgTable("hadith", {
-  id: text("id").primaryKey(),
-  order: integer("order").notNull().unique(),
-  title: text("title").notNull(),
-  /** الراوي — «عن … رضي الله عنه» */
-  narrator: text("narrator"),
-  arabicText: text("arabic_text").notNull(),
-  /** التخريج — من رواه ودرجته */
-  takhrij: text("takhrij"),
-  /** true once the teacher edits this hadith herself → excluded from content syncs */
-  textEdited: boolean("text_edited").notNull().default(false),
-  published: boolean("published").notNull().default(false),
-  publishedAt: timestamp("published_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+/* ────────────────────────────────
+ * App tables
+ * ──────────────────────────────── */
+
+/** Student profile — 1:1 with a user account. Privacy settings live here. */
+export const student = pgTable(
+  "student",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** المعلمة صاحبة هذا الملف — كل معلمة ترى طالباتها فقط */
+    teacherId: text("teacher_id").references(() => teacher.id, {
+      onDelete: "cascade",
+    }),
+    displayName: text("display_name").notNull(),
+    /** كود الطالبة للدخول — فريد على مستوى الموقع */
+    loginCode: text("login_code").unique(),
+    avatarUrl: text("avatar_url"),
+    /**
+     * رقم واتساب الطالبة بالصيغة الدولية (مثال: 201012345678).
+     * اختياري — يُستخدم فقط لفتح محادثة واتساب عند إرسال التقرير.
+     */
+    phone: text("phone"),
+    /** موافقة الطالبة على الظهور في لوحة أفضل 3 */
+    competitionOptIn: boolean("competition_opt_in").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("student_teacher_idx").on(t.teacherId)]
+);
+
+/** The 42 hadiths of the course — one copy per teacher. */
+export const hadith = pgTable(
+  "hadith",
+  {
+    id: text("id").primaryKey(),
+    /** المعلمة التي تنتمي إليها نسخة الأحاديث هذه */
+    teacherId: text("teacher_id").references(() => teacher.id, {
+      onDelete: "cascade",
+    }),
+    order: integer("order").notNull(),
+    title: text("title").notNull(),
+    /** الراوي — «عن … رضي الله عنه» */
+    narrator: text("narrator"),
+    arabicText: text("arabic_text").notNull(),
+    /** التخريج — من رواه ودرجته */
+    takhrij: text("takhrij"),
+    /** true once the teacher edits this hadith herself → excluded from content syncs */
+    textEdited: boolean("text_edited").notNull().default(false),
+    published: boolean("published").notNull().default(false),
+    publishedAt: timestamp("published_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("hadith_teacher_order_uidx").on(t.teacherId, t.order),
+  ]
+);
 
 /** Recitation status of one student for one hadith (recited / not yet). */
 export const recitation = pgTable(
@@ -149,37 +195,47 @@ export const achievement = pgTable("achievement", {
 });
 
 /**
- * Self-registration switch — lets students create their own accounts instead
- * of the teacher adding them one by one. Off by default; when on, the teacher
- * can require a join code so only her class can sign up.
+ * Self-registration switch — per teacher. When on, a student can create her own
+ * account by entering the teacher's code + her name + a password.
+ *
+ * `id` is the teacher id (legacy installations used the literal "main" and are
+ * migrated on boot).
  */
 export const registrationSettings = pgTable("registration_settings", {
-  id: text("id").primaryKey().default("main"),
+  id: text("id").primaryKey(),
   enabled: boolean("enabled").notNull().default(false),
-  /** كود الانضمام — اختياري؛ إن كان فارغًا فالتسجيل مفتوح لمن يعرف الرابط */
+  /** @deprecated kept for backward compatibility; the teacher code is the join code */
   code: text("code"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-/** Global competition (Top 3) switch — controlled by the teacher only. */
+/** Competition (Top 3) switch — per teacher. `id` is the teacher id. */
 export const competitionSettings = pgTable("competition_settings", {
-  id: text("id").primaryKey().default("main"),
+  id: text("id").primaryKey(),
   enabled: boolean("enabled").notNull().default(false),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-/** Library of encouraging messages — original wording, rotated per visit. */
-export const message = pgTable("message", {
-  id: text("id").primaryKey(),
-  text: text("text").notNull(),
-  category: text("category"), // تحفيز | امتنان | همة | استمرار | علم
-  active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+/** Library of encouraging messages — one library per teacher. */
+export const message = pgTable(
+  "message",
+  {
+    id: text("id").primaryKey(),
+    teacherId: text("teacher_id").references(() => teacher.id, {
+      onDelete: "cascade",
+    }),
+    text: text("text").notNull(),
+    category: text("category"), // تحفيز | امتنان | همة | استمرار | علم
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("message_teacher_idx").on(t.teacherId)]
+);
 
 /* ── Types ── */
 
 export type User = typeof user.$inferSelect;
+export type Teacher = typeof teacher.$inferSelect;
 export type Student = typeof student.$inferSelect;
 export type Hadith = typeof hadith.$inferSelect;
 export type Recitation = typeof recitation.$inferSelect;
@@ -201,6 +257,7 @@ export const schema = {
   session,
   account,
   verification,
+  teacher,
   student,
   hadith,
   recitation,
@@ -208,4 +265,5 @@ export const schema = {
   registrationSettings,
   competitionSettings,
   message,
+  siteMeta,
 };

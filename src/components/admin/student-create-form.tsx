@@ -7,16 +7,16 @@ import { SmallFlower } from "@/components/floral";
 export function StudentCreateForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function onSubmit(formData: FormData) {
     setError(null);
-    setSuccess(null);
+    setCreated(null);
     startTransition(async () => {
       const res = await createStudent(formData);
       if (res.ok) {
-        setSuccess("تمت إضافة الطالبة بنجاح");
+        setCreated(res.code ?? "");
         formRef.current?.reset();
       } else {
         setError(res.error ?? "تعذّر إضافة الطالبة");
@@ -31,7 +31,8 @@ export function StudentCreateForm() {
         <h2 className="font-display text-xl text-deep">إضافة طالبة</h2>
       </div>
       <p className="mt-1 text-sm text-muted">
-        تنشئ المعلمة الحساب، وتمرّر اسم المستخدم وكلمة المرور للطالبة.
+        اكتبي اسمها وكلمة المرور، والنظام يعطيها كودًا خاصًا بها — سلّميها الكود
+        والباسورد، وبها تدخل من صفحة الدخول.
       </p>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -40,19 +41,6 @@ export function StudentCreateForm() {
             اسم الطالبة
           </label>
           <input id="name" name="name" className="field" required />
-        </div>
-        <div>
-          <label className="label" htmlFor="username">
-            اسم المستخدم
-          </label>
-          <input
-            id="username"
-            name="username"
-            dir="ltr"
-            className="field"
-            placeholder="maryam"
-            required
-          />
         </div>
         <div>
           <label className="label" htmlFor="password">
@@ -67,20 +55,7 @@ export function StudentCreateForm() {
             required
           />
         </div>
-        <div>
-          <label className="label" htmlFor="email">
-            البريد الإلكتروني (اختياري)
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            dir="ltr"
-            className="field"
-            placeholder="name@example.com"
-          />
-        </div>
-        <div>
+        <div className="sm:col-span-2">
           <label className="label" htmlFor="phone">
             رقم الواتساب (اختياري)
           </label>
@@ -111,10 +86,18 @@ export function StudentCreateForm() {
           {error}
         </p>
       )}
-      {success && (
-        <p className="mt-4 rounded-2xl border border-dusty/40 bg-powder/60 px-4 py-2 text-sm text-deep">
-          {success}
-        </p>
+
+      {created !== null && (
+        <div className="mt-4 rounded-2xl border border-dusty/40 bg-powder/60 px-4 py-3 text-sm text-deep">
+          <p>تمت إضافة الطالبة ✓</p>
+          <p className="mt-1 text-xs text-muted">كودها للدخول:</p>
+          <p
+            dir="ltr"
+            className="mt-1 text-center font-display text-2xl tracking-[0.25em] text-deep"
+          >
+            {created || "—"}
+          </p>
+        </div>
       )}
 
       <button type="submit" className="btn-primary mt-6" disabled={pending}>

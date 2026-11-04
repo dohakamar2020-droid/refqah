@@ -404,6 +404,70 @@ export async function moveStudent(
   return reorderStudents(ordered.map((s) => s.id));
 }
 
+/**
+ * ترتيب المراكز في المنافسة — تحدّده المعلمة بنفسها: المركز الأول والثاني
+ * والثالث. أي طالبة تُترك فارغة يحدّد النظام مركزها تلقائيًا حسب عدد الأحاديث.
+ *
+ * المركز الواحد لا يكون لأكثر من طالبة: منح المركز لطالبة ينزعه من غيرها.
+ */
+export async function setCompetitionRanks(
+  formData: FormData
+): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  const mine = await db
+    .select({ id: student.id })
+    .from(student)
+    .where(eq(student.teacherId, teacherId));
+  const allowed = new Set(mine.map((s) => s.id));
+
+  const picks: { studentId: string; rank: number }[] = [];
+  for (const rank of [1, 2, 3]) {
+    const id = String(formData.get(`rank${rank}`) ?? "").trim();
+    if (!id) continue;
+    if (!allowed.has(id))
+      return { ok: false, error: "اختاري طالبات فصلك فقط" };
+    if (picks.some((p) => p.studentId === id))
+      return { ok: false, error: "لا يمكن أن تأخذ طالبة أكثر من مركز واحد" };
+    picks.push({ studentId: id, rank });
+  }
+
+  const now = new Date();
+  // Clear every manual rank first, then write the new podium — so a girl moved
+  // from first to third never keeps both.
+  await db
+    .update(student)
+    .set({ competitionRank: null, updatedAt: now })
+    .where(and(eq(student.teacherId, teacherId), sql`${student.competitionRank} is not null`));
+
+  for (const p of picks) {
+    await db
+      .update(student)
+      .set({ competitionRank: p.rank, updatedAt: now })
+      .where(and(eq(student.id, p.studentId), eq(student.teacherId, teacherId)));
+  }
+
+  revalidateAll();
+  return { ok: true };
+}
+
+/** إلغاء المراكز اليدوية — يعود الترتيب تلقائيًا حسب عدد الأحاديث. */
+export async function clearCompetitionRanks(): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  await db
+    .update(student)
+    .set({ competitionRank: null, updatedAt: new Date() })
+    .where(and(eq(student.teacherId, teacherId), sql`${student.competitionRank} is not null`));
+
+  revalidateAll();
+  return { ok: true };
+}
+
 /* ────────────────────────────────
  * ألقاب الأحاديث — لقب لكل حديث لصاحبة المركز الأول
  * ──────────────────────────────── */

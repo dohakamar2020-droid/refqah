@@ -7,9 +7,12 @@ import {
   getStudents,
   getMessages,
   getAllHadiths,
+  getManualRanks,
+  getRecitationIndex,
 } from "@/lib/queries";
 import { requireTeacher } from "@/lib/permissions";
 import { HadithTitlesManager } from "@/components/admin/hadith-titles-manager";
+import { CompetitionPodiumEditor } from "@/components/admin/competition-podium-editor";
 import {
   CompetitionMasterToggle,
   AddHonorForm,
@@ -34,6 +37,8 @@ export default async function AdminHonorsPage() {
     students,
     messages,
     hadiths,
+    manualRanks,
+    recitedIndex,
   ] = await Promise.all([
     getHonors(teacherId),
     getHadithTitles(teacherId),
@@ -43,6 +48,8 @@ export default async function AdminHonorsPage() {
     getStudents(teacherId),
     getMessages(teacherId),
     getAllHadiths(teacherId),
+    getManualRanks(teacherId),
+    getRecitationIndex(teacherId),
   ]);
 
   const customHonors = honors.filter((h) => h.title !== "سَابِقَةُ الخَيْرَات");
@@ -53,13 +60,26 @@ export default async function AdminHonorsPage() {
       <section className="card card-pad">
         <h2 className="font-display text-2xl text-deep">المنافسة</h2>
         <p className="mt-1 text-sm text-muted">
-          الطالبة توافق بنفسها، والمعلمة تتحكم في تشغيل اللوحة أو إيقافها — ولا
-          تُقارن طالبات فصلك بطالبات فصل آخر أبدًا.
+          الطالبة توافق بنفسها، والمعلمة تتحكم في تشغيل اللوحة أو إيقافها، وهي
+          كذلك التي تحدّد مَن المركز الأول والثاني والثالث — ولا تُقارن طالبات فصلك
+          بطالبات فصل آخر أبدًا.
         </p>
 
         <div className="mt-5">
           <CompetitionMasterToggle initial={competitionOn} />
         </div>
+
+        <CompetitionPodiumEditor
+          students={students.map((s) => ({
+            id: s.id,
+            displayName: s.displayName,
+            count: recitedIndex.get(s.id)?.size ?? 0,
+            competitionOptIn: s.competitionOptIn,
+          }))}
+          initialRanks={Object.fromEntries(
+            Array.from(manualRanks.entries()).map(([rank, id]) => [String(rank), id])
+          )}
+        />
 
         <div className="mt-5 rounded-2xl border border-powder bg-blush/40 p-4">
           <p className="text-sm font-medium text-deep">الترتيب الحالي (أفضل 3)</p>
@@ -69,6 +89,11 @@ export default async function AdminHonorsPage() {
                 <li key={e.studentId} className="flex justify-between">
                   <span className="text-ink">
                     {i + 1}. {e.displayName}
+                    {e.manualRank && (
+                      <span className="mr-2 rounded-full bg-powder px-2 py-0.5 text-[10px] text-deep">
+                        محدَّد منكِ
+                      </span>
+                    )}
                   </span>
                   <span className="text-muted nums">{e.count} حديثًا</span>
                 </li>

@@ -86,6 +86,8 @@ export type StudentRow = {
   competitionOptIn: boolean;
   /** ترتيب الطالبة كما رتّبته المعلمة (الأصغر أولًا) */
   sortOrder: number;
+  /** المركز في المنافسة الذي حددته المعلمة (1/2/3) أو null */
+  competitionRank: number | null;
   email: string;
   username: string | null;
 };
@@ -119,6 +121,7 @@ export async function getStudents(teacherId: string): Promise<StudentRow[]> {
       phone: student.phone,
       competitionOptIn: student.competitionOptIn,
       sortOrder: student.sortOrder,
+      competitionRank: student.competitionRank,
       email: user.email,
       username: user.username,
     })
@@ -186,6 +189,7 @@ export async function getStudentProgress(
       phone: student.phone,
       competitionOptIn: student.competitionOptIn,
       sortOrder: student.sortOrder,
+      competitionRank: student.competitionRank,
       email: user.email,
       username: user.username,
     })
@@ -226,6 +230,7 @@ export async function getStudentProgress(
       phone: row.phone,
       competitionOptIn: row.competitionOptIn,
       sortOrder: row.sortOrder,
+      competitionRank: row.competitionRank,
       email: row.email,
       username: row.username,
     },
@@ -313,12 +318,17 @@ export type LeaderboardEntry = {
   displayName: string;
   count: number;
   reachedAt: Date | null;
+  /** المركز الذي حددته المعلمة بنفسها (1/2/3)، أو null إن كان الترتيب تلقائيًا */
+  manualRank?: number | null;
 };
 
 /**
  * «سابقوا إلى الخيرات» — أفضل 3 من طالبات معلمة واحدة فقط.
- * Tie-break: whoever reached that count first (earliest last approval).
- * Returns [] when that teacher's competition switch is off.
+ *
+ * للمعلمة الكلمة الأولى: المراكز التي حدّدتها بنفسها (المركز الأول/الثاني/الثالث)
+ * تُعرض أولًا كما اختارتها، ثم تُكمل اللوحة تلقائيًا بمن لم تحدّد لهنّ مركزًا حسب
+ * عدد الأحاديث المعتمدة (والتعادل يُحسم لمن وصلت أولًا).
+ * تُرجع [] عندما تكون لوحة المنافسة موقوفة لهذه المعلمة.
  */
 export async function getLeaderboard(teacherId: string): Promise<LeaderboardEntry[]> {
   await ensureReady();
@@ -333,25 +343,49 @@ export async function getLeaderboard(teacherId: string): Promise<LeaderboardEntr
     .select({
       studentId: student.id,
       displayName: student.displayName,
-      count: sql<number>`count(*)::int`,
+      manualRank: student.competitionRank,
+      count: sql<number>`count(${recitation.id})::int`,
       reachedAt: sql<Date | null>`max(${recitation.recitedAt})`,
     })
     .from(student)
-    .innerJoin(
+    .leftJoin(
       recitation,
       and(eq(recitation.studentId, student.id), eq(recitation.recited, true))
     )
     .where(and(eq(student.competitionOptIn, true), eq(student.teacherId, teacherId)))
-    .groupBy(student.id, student.displayName)
-    .orderBy(desc(sql`count(*)`), asc(sql`max(${recitation.recitedAt})`))
-    .limit(3);
+    .groupBy(student.id, student.displayName, student.competitionRank);
 
-  return rows.map((r) => ({
+  const automatic = rows
+    .filter((r) => !r.manualRank)
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      const ta = a.reachedAt ? new Date(a.reachedAt).getTime() : Infinity;
+      const tb = b.reachedAt ? new Date(b.reachedAt).getTime() : Infinity;
+      return ta - tb;
+    });
+  const manual = rows
+    .filter((r) => r.manualRank)
+    .sort((a, b) => (a.manualRank ?? 0) - (b.manualRank ?? 0));
+
+  return [...manual, ...automatic].slice(0, 3).map((r) => ({
     studentId: r.studentId,
     displayName: r.displayName,
     count: r.count,
     reachedAt: r.reachedAt ?? null,
+    manualRank: r.manualRank ?? null,
   }));
+}
+
+/** المراكز التي حددتها المعلمة بنفسها (1 → studentId …). */
+export async function getManualRanks(teacherId: string): Promise<Map<number, string>> {
+  await ensureReady();
+  const rows = await db
+    .select({ id: student.id, rank: student.competitionRank })
+    .from(student)
+    .where(eq(student.teacherId, teacherId));
+  const map = new Map<number, string>();
+  for (const r of rows) if (r.rank) map.set(r.rank, r.id);
+  return map;
 }
 
 export type RegistrationState = {

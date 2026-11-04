@@ -187,6 +187,7 @@ CREATE INDEX IF NOT EXISTS "student_teacher_idx" ON "student" ("teacher_id");
 CREATE INDEX IF NOT EXISTS "message_teacher_idx" ON "message" ("teacher_id");
 
 ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "sort_order" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "competition_rank" integer;
 
 CREATE TABLE IF NOT EXISTS "hadith_title" (
   "id" text PRIMARY KEY NOT NULL,

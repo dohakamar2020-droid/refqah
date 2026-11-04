@@ -88,7 +88,10 @@ export default async function LeaderboardPage() {
                   {entry.count}
                 </p>
                 <p className="text-xs text-muted">حديثًا</p>
-                <p className="mt-3 text-xs text-muted">المركز {RANKS[slot]}</p>
+                <p className="mt-3 text-xs text-muted">
+                  المركز {RANKS[slot]}
+                  {entry.manualRank ? " · اختارته معلمتكِ" : ""}
+                </p>
               </div>
             );
           })}

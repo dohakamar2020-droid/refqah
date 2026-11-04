@@ -186,6 +186,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS "student_login_code_uidx" ON "student" ("login
 CREATE INDEX IF NOT EXISTS "student_teacher_idx" ON "student" ("teacher_id");
 CREATE INDEX IF NOT EXISTS "message_teacher_idx" ON "message" ("teacher_id");
 
+ALTER TABLE "student" ADD COLUMN IF NOT EXISTS "sort_order" integer DEFAULT 0 NOT NULL;
+
+CREATE TABLE IF NOT EXISTS "hadith_title" (
+  "id" text PRIMARY KEY NOT NULL,
+  "teacher_id" text NOT NULL REFERENCES "teacher"("id") ON DELETE cascade,
+  "hadith_id" text NOT NULL REFERENCES "hadith"("id") ON DELETE cascade,
+  "student_id" text NOT NULL REFERENCES "student"("id") ON DELETE cascade,
+  "title" text NOT NULL,
+  "description" text,
+  "awarded_at" timestamp DEFAULT now() NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "hadith_title_teacher_hadith_uidx" ON "hadith_title" ("teacher_id","hadith_id");
+CREATE INDEX IF NOT EXISTS "hadith_title_student_idx" ON "hadith_title" ("student_id");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "recitation_student_hadith_uidx" ON "recitation" USING btree ("student_id","hadith_id");
 CREATE INDEX IF NOT EXISTS "recitation_hadith_idx" ON "recitation" USING btree ("hadith_id");
 CREATE INDEX IF NOT EXISTS "recitation_student_idx" ON "recitation" USING btree ("student_id");

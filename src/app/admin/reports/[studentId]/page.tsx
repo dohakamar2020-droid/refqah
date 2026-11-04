@@ -22,6 +22,11 @@ function buildTextMessage(
       ? `تبقّى لكِ ${data.remaining} حديثًا بإذن الله.`
       : "أتممتِ الرحلة كاملة، بارك الله فيكِ.",
     data.isSabiqah ? "لقبكِ: سَابِقَةُ الخَيْرَات 🌸" : "",
+    data.hadithTitles.length > 0
+      ? `ألقابكِ في الأحاديث: ${data.hadithTitles
+          .map((t) => `${t.title}${t.order ? ` (حـ${t.order})` : ""}`)
+          .join(" · ")}`
+      : "",
     data.message ? `«${data.message}»` : "",
     "",
     "معًا حتى تمام حفظ الأربعين النووية 💗",

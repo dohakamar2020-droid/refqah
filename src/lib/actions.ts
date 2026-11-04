@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc, sql } from "drizzle-orm";
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { db } from "@/lib/db";
 import {
@@ -13,6 +13,7 @@ import {
   hadith,
   teacher,
   achievement,
+  hadithTitle,
   competitionSettings,
   registrationSettings,
   message,
@@ -194,6 +195,13 @@ export async function createStudent(formData: FormData): Promise<Result> {
   const code = await newStudentCode();
   const username = code.replace(/-/g, "").toLowerCase();
 
+  // New students join at the end of the teacher's own order, so her arrangement
+  // of the existing class is never disturbed.
+  const [top] = await db
+    .select({ max: sql<number>`coalesce(max(${student.sortOrder}), 0)::int` })
+    .from(student)
+    .where(eq(student.teacherId, teacherId));
+
   try {
     const created = await createUserWithPassword({
       name,
@@ -206,6 +214,14 @@ export async function createStudent(formData: FormData): Promise<Result> {
       teacherId,
       loginCode: code,
     });
+    if (created.studentId && (top?.max ?? 0) > 0) {
+      await db
+        .update(student)
+        .set({ sortOrder: (top?.max ?? 0) + 1, updatedAt: new Date() })
+        .where(
+          and(eq(student.id, created.studentId), eq(student.teacherId, teacherId))
+        );
+    }
     if (created.studentId && phone) {
       await db
         .update(student)
@@ -318,6 +334,157 @@ export async function deleteStudent(studentId: string): Promise<Result> {
   // Cascades remove the profile, recitations and achievements.
   await db.delete(user).where(eq(user.id, s.userId));
   await syncFirstHadithAchievement(teacherId);
+  revalidateAll();
+  return { ok: true };
+}
+
+/**
+ * ترتيب الطالبات — بالطريقة التي تختارها المعلمة من حسابها.
+ *
+ * تُرسَل القائمة كاملة بترتيبها الجديد، فتُحفظ أرقام الترتيب 1، 2، 3… لكل
+ * طالبة من طالباتها هي فقط. أي طالبة ليست في فصلك تُتجاهل.
+ */
+export async function reorderStudents(orderedIds: string[]): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  const mine = await db
+    .select({ id: student.id })
+    .from(student)
+    .where(eq(student.teacherId, teacherId));
+  const allowed = new Set(mine.map((s) => s.id));
+  const ids = orderedIds.filter((id) => allowed.has(id));
+  if (ids.length === 0) return { ok: false, error: "لا توجد طالبات لترتيبهنّ" };
+
+  const now = new Date();
+  for (let i = 0; i < ids.length; i++) {
+    await db
+      .update(student)
+      .set({ sortOrder: i + 1, updatedAt: now })
+      .where(and(eq(student.id, ids[i]), eq(student.teacherId, teacherId)));
+  }
+
+  revalidateAll();
+  return { ok: true };
+}
+
+/** تحريك طالبة خطوة واحدة لأعلى أو لأسفل في ترتيب المعلمة. */
+export async function moveStudent(
+  studentId: string,
+  direction: "up" | "down"
+): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  const rows = await db
+    .select({ id: student.id, sortOrder: student.sortOrder, name: student.displayName })
+    .from(student)
+    .where(eq(student.teacherId, teacherId));
+  if (rows.length === 0) return { ok: false, error: "لا توجد طالبات" };
+
+  const ordered = [...rows].sort((a, b) => {
+    const ao = a.sortOrder > 0 ? a.sortOrder : Number.MAX_SAFE_INTEGER;
+    const bo = b.sortOrder > 0 ? b.sortOrder : Number.MAX_SAFE_INTEGER;
+    if (ao !== bo) return ao - bo;
+    return a.name.localeCompare(b.name, "ar");
+  });
+
+  const index = ordered.findIndex((s) => s.id === studentId);
+  if (index === -1) return { ok: false, error: "الطالبة غير موجودة في فصلك" };
+
+  const swapWith = direction === "up" ? index - 1 : index + 1;
+  if (swapWith < 0 || swapWith >= ordered.length) return { ok: true };
+
+  const temp = ordered[index];
+  ordered[index] = ordered[swapWith];
+  ordered[swapWith] = temp;
+
+  return reorderStudents(ordered.map((s) => s.id));
+}
+
+/* ────────────────────────────────
+ * ألقاب الأحاديث — لقب لكل حديث لصاحبة المركز الأول
+ * ──────────────────────────────── */
+
+
+/**
+ * منح لقب حديث لطالبة (أو تعديل اللقب/صاحبته).
+ *
+ * اللقب يتغيّر مع كل حديث: لكل حديث لقبه الخاص، ولقب واحد فقط لكل حديث في
+ * الفصل. إرسال نفس الطالبة واللقب مرة أخرى يحدّثه بدل أن يكرّره.
+ */
+export async function awardHadithTitle(formData: FormData): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  const hadithId = String(formData.get("hadithId") ?? "").trim();
+  const studentId = String(formData.get("studentId") ?? "").trim();
+  const rawTitle = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+
+  if (!hadithId || !studentId) return { ok: false, error: "اختاري الحديث والطالبة" };
+  if (!rawTitle) return { ok: false, error: "اكتبي اللقب أو اختاري من المقترحات" };
+  if (rawTitle.length > 80) return { ok: false, error: "اللقب أطول من اللازم" };
+
+  const [h] = await db
+    .select({ id: hadith.id, order: hadith.order, title: hadith.title })
+    .from(hadith)
+    .where(and(eq(hadith.id, hadithId), eq(hadith.teacherId, teacherId)))
+    .limit(1);
+  if (!h) return { ok: false, error: "الحديث غير موجود في مساحتك" };
+
+  const [s] = await db
+    .select({ id: student.id, name: student.displayName })
+    .from(student)
+    .where(and(eq(student.id, studentId), eq(student.teacherId, teacherId)))
+    .limit(1);
+  if (!s) return { ok: false, error: "الطالبة غير موجودة في فصلك" };
+
+  const now = new Date();
+  const descriptionText =
+    description || `المركز الأول في الحديث ${h.order} — ${h.title}`;
+
+  await db
+    .insert(hadithTitle)
+    .values({
+      id: newId("htl"),
+      teacherId,
+      hadithId,
+      studentId,
+      title: rawTitle,
+      description: descriptionText,
+      awardedAt: now,
+      createdAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [hadithTitle.teacherId, hadithTitle.hadithId],
+      set: {
+        studentId,
+        title: rawTitle,
+        description: descriptionText,
+        awardedAt: now,
+      },
+    });
+
+  revalidateAll();
+  return { ok: true };
+}
+
+/** سحب لقب حديث (يصبح الحديث بلا صاحب لقب). */
+export async function removeHadithTitle(hadithId: string): Promise<Result> {
+  const authCheck = await requireTeacherOrThrow();
+  if ("error" in authCheck) return { ok: false, error: authCheck.error };
+  const { teacherId } = authCheck;
+
+  await db
+    .delete(hadithTitle)
+    .where(
+      and(eq(hadithTitle.teacherId, teacherId), eq(hadithTitle.hadithId, hadithId))
+    );
+
   revalidateAll();
   return { ok: true };
 }

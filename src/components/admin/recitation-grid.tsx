@@ -105,7 +105,13 @@ export function GridTable({
             {data.hadiths.map((h) => (
               <th
                 key={h.id}
-                title={h.title}
+                title={
+                  h.awardTitle
+                    ? `${h.title} — لقب الحديث: ${h.awardTitle}${
+                        h.awardStudentName ? ` (${h.awardStudentName})` : ""
+                      }`
+                    : h.title
+                }
                 className="border-b border-powder px-1 py-3 text-center align-middle"
                 style={{ minWidth: 46 }}
               >
@@ -118,6 +124,18 @@ export function GridTable({
                 >
                   حـ{h.order}
                 </span>
+                {h.awardTitle && (
+                  <span
+                    title={
+                      h.awardStudentName
+                        ? `${h.awardTitle} — ${h.awardStudentName}`
+                        : h.awardTitle
+                    }
+                    className="mt-1 block max-w-[5.5rem] truncate text-[9px] leading-tight text-dusty"
+                  >
+                    {h.awardTitle}
+                  </span>
+                )}
               </th>
             ))}
           </tr>
@@ -131,7 +149,14 @@ export function GridTable({
                   rowIdx % 2 === 1 ? "!bg-blush/40" : ""
                 }`}
               >
-                <span className="block truncate text-deep">{s.displayName}</span>
+                <span className="flex items-center gap-2">
+                  {s.rank ? (
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blush text-[10px] text-deep nums">
+                      {s.rank}
+                    </span>
+                  ) : null}
+                  <span className="truncate text-deep">{s.displayName}</span>
+                </span>
               </th>
 
               {data.hadiths.map((h) => {

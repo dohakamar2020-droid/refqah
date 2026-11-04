@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { saveRecitationNote } from "@/lib/actions";
 import { CheckIcon, DashIcon } from "@/components/grid-legend";
 import { SmallFlower } from "@/components/floral";
@@ -33,6 +34,7 @@ export function ResultCard({ hadith }: { hadith: StudentResultCard }) {
   const [saved, setSaved] = useState<"idle" | "ok" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
 
   const hasNote = Boolean(mistakes.trim() || body.trim());
   const mistakeLines = mistakes
@@ -53,6 +55,8 @@ export function ResultCard({ hadith }: { hadith: StudentResultCard }) {
       if (res.ok) {
         setSaved("ok");
         setEditing(false);
+        // Refresh so the server-side timestamp and counters follow the save.
+        router.refresh();
       } else {
         setSaved("error");
         setError(res.error ?? "تعذّر حفظ النتيجة");
